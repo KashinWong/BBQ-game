@@ -1,14 +1,14 @@
 {
-  "name": "bbq-master-graybox-prototype",
+  "name": "bbq-master-mvp",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "node --test src/prototype/*.test.ts",
-    "test:prep": "node --test src/prototype/prepLayout.test.ts",
+    "test": "node --test src/game/*.test.ts",
+    "test:prep": "node --test src/game/prepLayout.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +17,6 @@
   "devDependencies": {
     "@types/node": "^26.1.2",
     "typescript": "5.9.2",
-    "vite": "7.1.1"
+    "vite": "^7.3.6"
   }
 }

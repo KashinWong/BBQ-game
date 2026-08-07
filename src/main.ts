@@ -1,8 +1,6 @@
 import Phaser from "phaser";
-import { GameScene } from "./prototype/GameScene";
+import { LevelOneScene } from "./game/LevelOneScene";
 import "./styles.css";
-
-// PROTOTYPE — Layout A (上下工作台) was selected after the layout comparison.
 
 new Phaser.Game({
   type: Phaser.AUTO,
@@ -21,5 +19,5 @@ new Phaser.Game({
   input: {
     activePointers: 2,
   },
-  scene: [new GameScene()],
+  scene: [new LevelOneScene()],
 });

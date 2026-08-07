@@ -1,6 +1,6 @@
 :root {
   color: #f5f5f4;
-  background: #11100f;
+  background: #140a10;
   font-family: ui-rounded, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-synthesis: none;
   touch-action: none;
@@ -23,11 +23,38 @@ body {
   min-width: 320px;
   min-height: 568px;
   background:
-    radial-gradient(circle at 50% 18%, rgb(72 49 34 / 52%), transparent 35%),
-    #11100f;
+    radial-gradient(circle at 50% 18%, rgb(116 57 28 / 55%), transparent 38%),
+    linear-gradient(180deg, #1c0d1c, #120906);
   overscroll-behavior: none;
+}
+
+#app {
+  padding:
+    env(safe-area-inset-top, 0)
+    env(safe-area-inset-right, 0)
+    env(safe-area-inset-bottom, 0)
+    env(safe-area-inset-left, 0);
 }
 
 canvas {
   display: block;
+  border-radius: 8px;
+  box-shadow: 0 16px 50px rgb(0 0 0 / 38%);
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  body::after {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 32px;
+    background: #1c0d16;
+    color: #ffedd5;
+    content: "请旋转手机，使用竖屏游玩《烤串高手》";
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+  }
 }
