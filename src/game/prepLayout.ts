@@ -13,16 +13,24 @@ export interface IngredientRackSlot {
   y: number;
 }
 
-export function buildLevelOneIngredientRack(prep: PrepRect, skewerY: number): IngredientRackSlot[] {
-  const kinds: IngredientKind[] = ["beef", "pepper", "mushroom"];
-  const left = prep.x + 70;
-  const right = prep.x + prep.width - 70;
+export function buildIngredientRack(
+  prep: PrepRect,
+  skewerY: number,
+  kinds: readonly IngredientKind[],
+): IngredientRackSlot[] {
+  const edgePadding = kinds.length >= 4 ? 54 : 70;
+  const left = prep.x + edgePadding;
+  const right = prep.x + prep.width - edgePadding;
   const top = prep.y + 60;
   const bottom = Math.min(prep.y + prep.height - 125, skewerY - 88);
 
   return [top, bottom].flatMap((y) => kinds.map((kind, column) => ({
     kind,
-    x: left + ((right - left) / (kinds.length - 1)) * column,
+    x: kinds.length === 1 ? prep.x + prep.width / 2 : left + ((right - left) / (kinds.length - 1)) * column,
     y,
   })));
+}
+
+export function buildLevelOneIngredientRack(prep: PrepRect, skewerY: number): IngredientRackSlot[] {
+  return buildIngredientRack(prep, skewerY, ["beef", "pepper", "mushroom"]);
 }

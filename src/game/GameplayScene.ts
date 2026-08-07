@@ -1,15 +1,18 @@
 import Phaser from "phaser";
 import { calculateOrderPatienceSeconds } from "./orderTiming";
-import { buildLevelOneIngredientRack } from "./prepLayout";
+import { buildIngredientRack } from "./prepLayout";
 import {
   evaluateService,
+  getLevelConfig,
   isPerfectDoneness,
   LEVEL_ONE,
   LEVEL_ONE_DONENESS,
   starsForScore,
   type IngredientKind,
+  type LevelId,
+  type LevelOneConfig,
 } from "./levelOneRules";
-import { loadProgress, recordLevelOneResult } from "./progress";
+import { loadProgress, recordLevelOneResult, recordLevelResult } from "./progress";
 import { advanceTutorial, type TutorialEvent, type TutorialStep } from "./tutorialFlow";
 import { BrowserFeedback } from "../platform/BrowserFeedback";
 import { SKEWER_INTERACTION } from "./interactionGeometry";
@@ -70,6 +73,9 @@ interface MovingIngredient {
   kind: IngredientKind;
   view: Phaser.GameObjects.Container;
   body: Phaser.GameObjects.Rectangle;
+  homeX: number;
+  homeY: number;
+  phase: number;
 }
 
 interface OrderState {
@@ -122,6 +128,14 @@ const FOOD: Record<IngredientKind, FoodDefinition> = {
     burntColor: 0x39302a,
     cookSeconds: 4,
   },
+  sausage: {
+    label: "香肠",
+    shortLabel: "🌭",
+    color: 0xd85f48,
+    cookedColor: 0xa63d2d,
+    burntColor: 0x30201d,
+    cookSeconds: 5,
+  },
 };
 
 const LAYOUT: LayoutSpec = {
@@ -138,9 +152,11 @@ const LAYOUT: LayoutSpec = {
   skewerStart: { x: 112, y: 748 },
 };
 
-export class LevelOneScene extends Phaser.Scene {
+export class GameplayScene extends Phaser.Scene {
   private readonly layout = LAYOUT;
   private readonly feedback = new BrowserFeedback();
+  private level: LevelOneConfig = LEVEL_ONE;
+  private levelId: LevelId = 1;
 
   private movingIngredients: MovingIngredient[] = [];
   private allSkewers = new Set<SkewerState>();
@@ -181,7 +197,12 @@ export class LevelOneScene extends Phaser.Scene {
   private tutorialGlow!: Phaser.GameObjects.Graphics;
 
   constructor() {
-    super({ key: "LevelOne" });
+    super({ key: "Gameplay" });
+  }
+
+  init(data: { levelId?: number }): void {
+    this.level = getLevelConfig(data.levelId ?? 1);
+    this.levelId = this.level.id;
   }
 
   create(): void {
@@ -195,10 +216,10 @@ export class LevelOneScene extends Phaser.Scene {
     this.updateHud();
     try {
       this.storage = window.localStorage;
-      this.tutorialActive = !loadProgress(this.storage).tutorialCompleted;
+      this.tutorialActive = this.level.tutorial && !loadProgress(this.storage).tutorialCompleted;
     } catch {
       this.storage = undefined;
-      this.tutorialActive = true;
+      this.tutorialActive = this.level.tutorial;
     }
     this.tutorialStep = this.tutorialActive ? "select-food" : "complete";
     this.showLevelIntro();
@@ -212,10 +233,11 @@ export class LevelOneScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
+    this.updateIngredientMotion(_time);
     if (this.ended || !this.started || this.clockPaused || this.manualPaused || this.tutorialPaused) return;
 
     const seconds = Math.min(delta, 100) / 1000;
-    const timersAreFrozen = this.tutorialActive && LEVEL_ONE.pauseTimersDuringTutorial;
+    const timersAreFrozen = this.tutorialActive && this.level.pauseTimersDuringTutorial;
     if (!timersAreFrozen) {
       this.timeRemaining = Math.max(0, this.timeRemaining - seconds);
       this.order.patience = Math.max(0, this.order.patience - seconds);
@@ -248,7 +270,7 @@ export class LevelOneScene extends Phaser.Scene {
     this.score = 0;
     this.combo = 0;
     this.maxCombo = 0;
-    this.timeRemaining = LEVEL_ONE.durationSeconds;
+    this.timeRemaining = this.level.durationSeconds;
     this.completedOrders = 0;
     this.perfectOrders = 0;
     this.nextSkewerId = 1;
@@ -260,7 +282,7 @@ export class LevelOneScene extends Phaser.Scene {
     this.manualPaused = false;
     this.tutorialPaused = false;
     this.oneStarAnnounced = false;
-    this.tutorialActive = true;
+    this.tutorialActive = this.level.tutorial;
     this.tutorialStep = "select-food";
     this.storage = undefined;
     this.orderRecipeText = undefined;
@@ -373,7 +395,7 @@ export class LevelOneScene extends Phaser.Scene {
       fontStyle: "bold",
       color: "#fff7ed",
     });
-    this.add.text(20, 43, this.layout.name, {
+    this.add.text(20, 43, `第 ${this.level.id} 关 · ${this.level.title}`, {
       fontFamily: "inherit",
       fontSize: "10px",
       color: "#d6a97f",
@@ -396,7 +418,7 @@ export class LevelOneScene extends Phaser.Scene {
       fontSize: "10px",
       color: "#fdba74",
     });
-    this.goalText = this.add.text(275, 43, `目标 ${LEVEL_ONE.starScores[0]}`, {
+    this.goalText = this.add.text(275, 43, `目标 ${this.level.starScores[0]}`, {
       fontFamily: "inherit",
       fontSize: "10px",
       color: "#fef3c7",
@@ -440,7 +462,7 @@ export class LevelOneScene extends Phaser.Scene {
     const veil = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x140d0a, 0.9);
     const card = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 330, 430, 0x3d2418, 1)
       .setStrokeStyle(3, 0xf6b84a, 0.95);
-    const badge = this.add.text(WORLD_WIDTH / 2, 246, "第 1 关", {
+    const badge = this.add.text(WORLD_WIDTH / 2, 246, `第 ${this.level.id} 关`, {
       fontFamily: "inherit",
       fontSize: "14px",
       fontStyle: "bold",
@@ -448,7 +470,7 @@ export class LevelOneScene extends Phaser.Scene {
       backgroundColor: "#f6b84a",
       padding: { left: 14, right: 14, top: 5, bottom: 5 },
     }).setOrigin(0.5);
-    const title = this.add.text(WORLD_WIDTH / 2, 298, "夜市初营业", {
+    const title = this.add.text(WORLD_WIDTH / 2, 298, this.level.title, {
       fontFamily: "inherit",
       fontSize: "30px",
       fontStyle: "bold",
@@ -457,7 +479,7 @@ export class LevelOneScene extends Phaser.Scene {
     const rules = this.add.text(
       WORLD_WIDTH / 2,
       385,
-      `${LEVEL_ONE.durationSeconds} 秒内完成订单\n达到 ${LEVEL_ONE.starScores[0]} 分即可过关\n\n🥩 牛肉   🫑 青椒   🍄 蘑菇`,
+      `${this.level.durationSeconds} 秒内完成订单\n达到 ${this.level.starScores[0]} 分即可过关\n\n${this.level.ingredientKinds.map((kind) => `${FOOD[kind].shortLabel} ${FOOD[kind].label}`).join("   ")}`,
       {
         fontFamily: "inherit",
         fontSize: "16px",
@@ -469,8 +491,8 @@ export class LevelOneScene extends Phaser.Scene {
     const record = this.add.text(
       WORLD_WIDTH / 2,
       480,
-      progress && progress.levelOneBestScore > 0
-        ? `历史最高 ${progress.levelOneBestScore} 分 · ${"★".repeat(progress.levelOneBestStars)}`
+      progress && (this.levelId === 1 ? progress.levelOneBestScore : progress.levelTwoBestScore) > 0
+        ? `历史最高 ${this.levelId === 1 ? progress.levelOneBestScore : progress.levelTwoBestScore} 分 · ${"★".repeat(this.levelId === 1 ? progress.levelOneBestStars : progress.levelTwoBestStars)}`
         : this.tutorialActive ? "首次挑战将开启互动教学" : "准备刷新你的最高分",
       {
         fontFamily: "inherit",
@@ -595,7 +617,7 @@ export class LevelOneScene extends Phaser.Scene {
         recordLevelOneResult(this.storage, { score: 0, stars: 0, tutorialCompleted: true });
       }
       layer.destroy(true);
-      this.showToast(`教学完成，冲击 ${LEVEL_ONE.starScores[0]} 分！`, 0xfef08a);
+      this.showToast(`教学完成，冲击 ${this.level.starScores[0]} 分！`, 0xfef08a);
     });
     layer.add([veil, card, title, details, button]);
   }
@@ -638,12 +660,19 @@ export class LevelOneScene extends Phaser.Scene {
       layer.destroy(true);
       this.manualPaused = false;
     });
-    restart.on("pointerdown", () => this.scene.restart());
-    layer.add([veil, card, title, help, resume, restart]);
+    const select = this.add.text(WORLD_WIDTH / 2, 580, "返回选关", {
+      fontFamily: "inherit",
+      fontSize: "14px",
+      color: "#d6d3d1",
+      padding: { left: 30, right: 30, top: 7, bottom: 7 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    restart.on("pointerdown", () => this.scene.restart({ levelId: this.levelId }));
+    select.on("pointerdown", () => this.scene.start("LevelSelect"));
+    layer.add([veil, card, title, help, resume, restart, select]);
   }
 
   private createOrder(): void {
-    const recipe = [...LEVEL_ONE.recipes[this.nextRecipeIndex % LEVEL_ONE.recipes.length]];
+    const recipe = [...this.level.recipes[this.nextRecipeIndex % this.level.recipes.length]];
     this.nextRecipeIndex += 1;
     const patience = calculateOrderPatienceSeconds(recipe, FOOD);
     this.order = { recipe, patience, maxPatience: patience };
@@ -692,7 +721,7 @@ export class LevelOneScene extends Phaser.Scene {
   }
 
   private spawnIngredientWave(): void {
-    const rack = buildLevelOneIngredientRack(this.layout.prep, this.layout.skewerStart.y);
+    const rack = buildIngredientRack(this.layout.prep, this.layout.skewerStart.y, this.level.ingredientKinds);
     for (const slot of rack) {
       this.spawnIngredient(slot.kind, slot.x, slot.y);
     }
@@ -716,6 +745,9 @@ export class LevelOneScene extends Phaser.Scene {
       kind,
       view,
       body,
+      homeX: x,
+      homeY: y,
+      phase: this.movingIngredients.length * 0.83 + this.levelId,
     };
     view.setInteractive({ useHandCursor: true });
     view.on("pointerdown", () => this.pickIngredient(ingredient));
@@ -736,8 +768,8 @@ export class LevelOneScene extends Phaser.Scene {
 
     ingredient.view.disableInteractive();
     this.movingIngredients = this.movingIngredients.filter((item) => item !== ingredient);
-    const restockX = ingredient.view.x;
-    const restockY = ingredient.view.y;
+    const restockX = ingredient.homeX;
+    const restockY = ingredient.homeY;
     this.pendingIngredientPickups += 1;
     const targetX = skewer.view.x - 43 + reservedSlot * 39;
     const targetY = skewer.view.y - 5;
@@ -779,6 +811,18 @@ export class LevelOneScene extends Phaser.Scene {
         isTarget ? 3 : 1.5,
         isTarget ? 0xfde68a : 0xffffff,
         isTarget ? 0.95 : 0.2,
+      );
+    }
+  }
+
+  private updateIngredientMotion(time: number): void {
+    const amplitude = this.level.ingredientMotionAmplitude;
+    if (amplitude <= 0) return;
+    for (const ingredient of this.movingIngredients) {
+      const wave = time / 1150 + ingredient.phase;
+      ingredient.view.setPosition(
+        ingredient.homeX + Math.sin(wave) * amplitude,
+        ingredient.homeY + Math.cos(wave * 0.8) * 2,
       );
     }
   }
@@ -1139,7 +1183,7 @@ export class LevelOneScene extends Phaser.Scene {
     );
     this.feedback.play(result.perfect ? "perfect" : "success");
     if (result.perfect) this.feedback.vibrate(24);
-    if (!this.oneStarAnnounced && this.score >= LEVEL_ONE.starScores[0]) {
+    if (!this.oneStarAnnounced && this.score >= this.level.starScores[0]) {
       this.oneStarAnnounced = true;
       this.celebrateGoalReached();
     }
@@ -1171,8 +1215,8 @@ export class LevelOneScene extends Phaser.Scene {
     this.timerText.setText(`${this.timeRemaining.toFixed(1)}s`);
     this.timerText.setColor(this.timeRemaining <= 10 ? "#fca5a5" : "#ffffff");
     this.comboText.setText(`连击 ${this.combo} · ×${Math.min(1.5, 1 + this.combo * 0.1).toFixed(1)}`);
-    const stars = starsForScore(this.score);
-    const nextTarget = stars === 3 ? LEVEL_ONE.starScores[2] : LEVEL_ONE.starScores[stars];
+    const stars = starsForScore(this.score, this.level);
+    const nextTarget = stars === 3 ? this.level.starScores[2] : this.level.starScores[stars];
     this.goalText.setText(stars === 3 ? "★★★ 满星" : `${"★".repeat(stars)} ${this.score}/${nextTarget}`);
     this.patienceText?.setText(`耐心 ${Math.ceil(this.order.patience)}s`);
     if (this.patienceFill) {
@@ -1230,14 +1274,16 @@ export class LevelOneScene extends Phaser.Scene {
     this.tutorialPaused = false;
     this.tutorialText.setVisible(false);
     this.tutorialGlow.setVisible(false);
-    const stars = starsForScore(this.score);
+    const stars = starsForScore(this.score, this.level);
     const passed = stars >= 1;
     const progress = this.storage
-      ? recordLevelOneResult(this.storage, {
-        score: this.score,
-        stars,
-        tutorialCompleted: !this.tutorialActive || this.tutorialStep === "complete",
-      })
+      ? this.levelId === 1
+        ? recordLevelOneResult(this.storage, {
+          score: this.score,
+          stars,
+          tutorialCompleted: !this.tutorialActive || this.tutorialStep === "complete",
+        })
+        : recordLevelResult(this.storage, 2, { score: this.score, stars })
       : undefined;
     const veil = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x0c0a09, 0.86).setDepth(500);
     const card = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 - 4, 334, 440, 0x3d2418, 1)
@@ -1258,7 +1304,7 @@ export class LevelOneScene extends Phaser.Scene {
     const stats = this.add.text(
       WORLD_WIDTH / 2,
       WORLD_HEIGHT / 2 - 36,
-      `本局积分  ${this.score}\n历史最高  ${progress?.levelOneBestScore ?? this.score}\n完成订单  ${this.completedOrders}\n完美出餐  ${this.perfectOrders}\n最高连击  ${this.maxCombo}`,
+      `本局积分  ${this.score}\n历史最高  ${progress ? (this.levelId === 1 ? progress.levelOneBestScore : progress.levelTwoBestScore) : this.score}\n完成订单  ${this.completedOrders}\n完美出餐  ${this.perfectOrders}\n最高连击  ${this.maxCombo}`,
       {
         fontFamily: "inherit",
         fontSize: "16px",
@@ -1270,14 +1316,16 @@ export class LevelOneScene extends Phaser.Scene {
     const status = this.add.text(
       WORLD_WIDTH / 2,
       WORLD_HEIGHT / 2 + 87,
-      passed ? "第 2 关已解锁 · 后续开放" : `再得 ${LEVEL_ONE.starScores[0] - this.score} 分即可过关`,
+      passed
+        ? this.levelId === 1 ? "第 2 关已解锁" : "更多关卡正在筹备"
+        : `再得 ${this.level.starScores[0] - this.score} 分即可过关`,
       {
         fontFamily: "inherit",
         fontSize: "12px",
         color: passed ? "#bbf7d0" : "#fed7aa",
       },
     ).setOrigin(0.5).setDepth(502);
-    const replay = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 + 153, "重试第 1 关", {
+    const replay = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 + 137, `重试第 ${this.levelId} 关`, {
       fontFamily: "inherit",
       fontSize: "18px",
       fontStyle: "bold",
@@ -1285,7 +1333,18 @@ export class LevelOneScene extends Phaser.Scene {
       backgroundColor: "#fbbf24",
       padding: { left: 34, right: 34, top: 12, bottom: 12 },
     }).setOrigin(0.5).setDepth(502).setInteractive({ useHandCursor: true });
-    replay.on("pointerdown", () => this.scene.restart());
+    replay.on("pointerdown", () => this.scene.restart({ levelId: this.levelId }));
+    const secondaryLabel = passed && this.levelId === 1 ? "进入第 2 关" : "返回选关";
+    const secondary = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 + 198, secondaryLabel, {
+      fontFamily: "inherit",
+      fontSize: "15px",
+      color: "#fed7aa",
+      padding: { left: 30, right: 30, top: 8, bottom: 8 },
+    }).setOrigin(0.5).setDepth(502).setInteractive({ useHandCursor: true });
+    secondary.on("pointerdown", () => {
+      if (passed && this.levelId === 1) this.scene.restart({ levelId: 2 });
+      else this.scene.start("LevelSelect");
+    });
     void veil;
     void card;
     void title;

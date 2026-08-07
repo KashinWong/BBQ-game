@@ -1,5 +1,7 @@
 import Phaser from "phaser";
-import { LevelOneScene } from "./game/LevelOneScene";
+import { GameplayScene } from "./game/GameplayScene";
+import { LevelSelectScene } from "./game/LevelSelectScene";
+import { MainMenuScene } from "./game/MainMenuScene";
 import "./styles.css";
 
 new Phaser.Game({
@@ -19,5 +21,5 @@ new Phaser.Game({
   input: {
     activePointers: 2,
   },
-  scene: [new LevelOneScene()],
+  scene: [new MainMenuScene(), new LevelSelectScene(), new GameplayScene()],
 });

@@ -1,25 +1,64 @@
-export type IngredientKind = "beef" | "pepper" | "mushroom";
+export type IngredientKind = "beef" | "pepper" | "mushroom" | "sausage";
+export type LevelId = 1 | 2;
 
 export interface LevelOneConfig {
+  id: LevelId;
+  title: string;
+  subtitle: string;
   durationSeconds: number;
   starScores: readonly [number, number, number];
   grillSlots: number;
   ingredientSpeed: number;
+  ingredientMotionAmplitude: number;
+  ingredientKinds: readonly IngredientKind[];
   pauseTimersDuringTutorial: boolean;
+  tutorial: boolean;
   recipes: readonly (readonly IngredientKind[])[];
 }
 
 export const LEVEL_ONE: LevelOneConfig = {
+  id: 1,
+  title: "夜市初营业",
+  subtitle: "掌握选料、翻面与出餐",
   durationSeconds: 90,
   starScores: [600, 1000, 1400],
   grillSlots: 2,
   ingredientSpeed: 0,
+  ingredientMotionAmplitude: 0,
+  ingredientKinds: ["beef", "pepper", "mushroom"],
   pauseTimersDuringTutorial: true,
+  tutorial: true,
   recipes: [
     ["mushroom", "beef"],
     ["pepper", "mushroom"],
   ],
 };
+
+export const LEVEL_TWO: LevelOneConfig = {
+  id: 2,
+  title: "晚市加单",
+  subtitle: "香肠登场，食材开始轻轻移动",
+  durationSeconds: 90,
+  starScores: [900, 1400, 1900],
+  grillSlots: 2,
+  ingredientSpeed: 0,
+  ingredientMotionAmplitude: 12,
+  ingredientKinds: ["beef", "pepper", "mushroom", "sausage"],
+  pauseTimersDuringTutorial: false,
+  tutorial: false,
+  recipes: [
+    ["sausage", "beef"],
+    ["sausage", "mushroom"],
+    ["pepper", "mushroom"],
+    ["sausage", "beef", "mushroom"],
+  ],
+};
+
+export const PLAYABLE_LEVELS = [LEVEL_ONE, LEVEL_TWO] as const;
+
+export function getLevelConfig(levelId: number): LevelOneConfig {
+  return levelId === LEVEL_TWO.id ? LEVEL_TWO : LEVEL_ONE;
+}
 
 export const LEVEL_ONE_DONENESS = {
   perfectMin: 70,
@@ -96,9 +135,9 @@ export function evaluateService(request: ServiceRequest): ServiceResult {
   };
 }
 
-export function starsForScore(score: number): 0 | 1 | 2 | 3 {
-  if (score >= LEVEL_ONE.starScores[2]) return 3;
-  if (score >= LEVEL_ONE.starScores[1]) return 2;
-  if (score >= LEVEL_ONE.starScores[0]) return 1;
+export function starsForScore(score: number, level: LevelOneConfig = LEVEL_ONE): 0 | 1 | 2 | 3 {
+  if (score >= level.starScores[2]) return 3;
+  if (score >= level.starScores[1]) return 2;
+  if (score >= level.starScores[0]) return 1;
   return 0;
 }
