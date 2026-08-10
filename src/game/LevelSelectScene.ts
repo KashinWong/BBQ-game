@@ -25,20 +25,21 @@ export class LevelSelectScene extends Phaser.Scene {
     this.add.text(56, 31, "选择关卡", {
       fontFamily: "inherit", fontSize: "22px", fontStyle: "bold", color: "#fff7ed",
     });
-    this.add.text(57, 59, `已获得 ${progress.levelOneBestStars + progress.levelTwoBestStars}/6 ★`, {
+    this.add.text(57, 59, `已获得 ${progress.levelOneBestStars + progress.levelTwoBestStars + progress.levelThreeBestStars + progress.levelFourBestStars + progress.levelFiveBestStars}/15 ★`, {
       fontFamily: "inherit", fontSize: "11px", color: "#facc15",
     });
 
-    this.createPlayableCard(cards[0], 186);
-    this.createPlayableCard(cards[1], 334);
+    this.createPlayableCard(cards[0], 126);
+    this.createPlayableCard(cards[1], 216);
+    this.createPlayableCard(cards[2], 306);
+    this.createPlayableCard(cards[3], 396);
+    this.createPlayableCard(cards[4], 486);
 
-    this.add.text(24, 440, "后续摊位", {
+    this.add.text(24, 538, "后续摊位", {
       fontFamily: "inherit", fontSize: "15px", fontStyle: "bold", color: "#e7b98d",
     });
-    cards.slice(2).forEach((card, index) => {
-      const column = index % 2;
-      const row = Math.floor(index / 2);
-      this.createComingSoonCard(card, 105 + column * 180, 516 + row * 128);
+    cards.slice(5).forEach((card) => {
+      this.createComingSoonCard(card, WIDTH / 2, 612);
     });
     this.add.text(WIDTH / 2, 790, "每关获得一星即可继续前进", {
       fontFamily: "inherit", fontSize: "11px", color: "#8f7568",
@@ -48,25 +49,25 @@ export class LevelSelectScene extends Phaser.Scene {
   private createPlayableCard(card: LevelCard, y: number): void {
     const enabled = card.status === "playable";
     const container = this.add.container(WIDTH / 2, y);
-    const bg = this.add.rectangle(0, 0, 344, 116, enabled ? 0x512a19 : 0x292321, 0.97)
+    const bg = this.add.rectangle(0, 0, 344, 82, enabled ? 0x512a19 : 0x292321, 0.97)
       .setStrokeStyle(2, enabled ? 0xe78a43 : 0x5e5550, 0.9)
       .setInteractive({ useHandCursor: enabled });
-    const badge = this.add.text(-143, -37, `第 ${card.id} 关`, {
-      fontFamily: "inherit", fontSize: "12px", fontStyle: "bold", color: enabled ? "#3b1d0b" : "#c4b5ad",
+    const badge = this.add.text(-143, -24, `第 ${card.id} 关`, {
+      fontFamily: "inherit", fontSize: "11px", fontStyle: "bold", color: enabled ? "#3b1d0b" : "#c4b5ad",
       backgroundColor: enabled ? "#f6b84a" : "#4b4542",
       padding: { left: 10, right: 10, top: 4, bottom: 4 },
     }).setOrigin(0, 0.5);
-    const title = this.add.text(-143, -4, card.title, {
-      fontFamily: "inherit", fontSize: "23px", fontStyle: "bold", color: enabled ? "#fff7ed" : "#a8a29e",
+    const title = this.add.text(-143, 1, card.title, {
+      fontFamily: "inherit", fontSize: "18px", fontStyle: "bold", color: enabled ? "#fff7ed" : "#a8a29e",
     }).setOrigin(0, 0.5);
-    const subtitle = this.add.text(-143, 26, card.status === "locked" ? card.unlockHint! : card.subtitle, {
-      fontFamily: "inherit", fontSize: "11px", color: enabled ? "#e7b98d" : "#8e8580",
+    const subtitle = this.add.text(-143, 24, card.status === "locked" ? card.unlockHint! : card.subtitle, {
+      fontFamily: "inherit", fontSize: "9px", color: enabled ? "#e7b98d" : "#8e8580",
     }).setOrigin(0, 0.5);
-    const score = this.add.text(132, -25, enabled ? `${card.bestScore} 分` : "🔒", {
+    const score = this.add.text(132, -17, enabled ? `${card.bestScore} 分` : "🔒", {
       fontFamily: "inherit", fontSize: enabled ? "14px" : "24px", color: enabled ? "#fdba74" : "#a8a29e",
     }).setOrigin(1, 0.5);
-    const stars = this.add.text(132, 18, enabled ? `${"★".repeat(card.bestStars)}${"☆".repeat(3 - card.bestStars)}` : "", {
-      fontFamily: "inherit", fontSize: "19px", color: "#facc15",
+    const stars = this.add.text(132, 15, enabled ? `${"★".repeat(card.bestStars)}${"☆".repeat(3 - card.bestStars)}` : "", {
+      fontFamily: "inherit", fontSize: "17px", color: "#facc15",
     }).setOrigin(1, 0.5);
     container.add([bg, badge, title, subtitle, score, stars]);
     if (enabled) bg.on("pointerdown", () => this.scene.start("Gameplay", { levelId: card.id }));

@@ -27,3 +27,21 @@ test("level two keeps two visible portions of all four ingredients", () => {
   }
   assert.equal(new Set(rack.map(({ x, y }) => `${x}:${y}`)).size, rack.length);
 });
+
+test("level four keeps six ingredient kinds visible without cramped centers", () => {
+  const rack = buildIngredientRack(
+    { x: 15, y: 540, width: 360, height: 245 },
+    748,
+    ["beef", "pepper", "mushroom", "sausage", "corn", "chicken"],
+  );
+  assert.equal(rack.length, 12);
+  for (const kind of ["beef", "pepper", "mushroom", "sausage", "corn", "chicken"] as const) {
+    assert.equal(rack.filter((slot) => slot.kind === kind).length, 2);
+  }
+  const topRow = rack.filter(({ y }) => y === rack[0].y).sort((a, b) => a.x - b.x);
+  assert.ok(topRow.slice(1).every((slot, index) => slot.x - topRow[index].x >= 52));
+  const trackMinX = 39;
+  const trackMaxX = 351;
+  const wrapGap = trackMaxX - topRow.at(-1)!.x + topRow[0].x - trackMinX;
+  assert.ok(wrapGap >= 52);
+});

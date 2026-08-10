@@ -26,7 +26,9 @@ export function buildIngredientRack(
 
   return [top, bottom].flatMap((y) => kinds.map((kind, column) => ({
     kind,
-    x: kinds.length === 1 ? prep.x + prep.width / 2 : left + ((right - left) / (kinds.length - 1)) * column,
+    x: kinds.length >= 6
+      ? prep.x + 24 + ((prep.width - 48) / kinds.length) * column
+      : kinds.length === 1 ? prep.x + prep.width / 2 : left + ((right - left) / (kinds.length - 1)) * column,
     y,
   })));
 }

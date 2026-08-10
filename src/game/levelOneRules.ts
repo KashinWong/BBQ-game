@@ -1,5 +1,5 @@
-export type IngredientKind = "beef" | "pepper" | "mushroom" | "sausage";
-export type LevelId = 1 | 2;
+export type IngredientKind = "beef" | "pepper" | "mushroom" | "sausage" | "corn" | "chicken";
+export type LevelId = 1 | 2 | 3 | 4 | 5;
 
 export interface LevelOneConfig {
   id: LevelId;
@@ -7,7 +7,8 @@ export interface LevelOneConfig {
   subtitle: string;
   durationSeconds: number;
   starScores: readonly [number, number, number];
-  grillSlots: number;
+  grillSlots: 2 | 3;
+  simultaneousOrders: 1 | 2;
   ingredientSpeed: number;
   ingredientMotionAmplitude: number;
   ingredientKinds: readonly IngredientKind[];
@@ -23,6 +24,7 @@ export const LEVEL_ONE: LevelOneConfig = {
   durationSeconds: 90,
   starScores: [600, 1000, 1400],
   grillSlots: 2,
+  simultaneousOrders: 1,
   ingredientSpeed: 0,
   ingredientMotionAmplitude: 0,
   ingredientKinds: ["beef", "pepper", "mushroom"],
@@ -41,6 +43,7 @@ export const LEVEL_TWO: LevelOneConfig = {
   durationSeconds: 90,
   starScores: [900, 1400, 1900],
   grillSlots: 2,
+  simultaneousOrders: 1,
   ingredientSpeed: 0,
   ingredientMotionAmplitude: 12,
   ingredientKinds: ["beef", "pepper", "mushroom", "sausage"],
@@ -54,10 +57,77 @@ export const LEVEL_TWO: LevelOneConfig = {
   ],
 };
 
-export const PLAYABLE_LEVELS = [LEVEL_ONE, LEVEL_TWO] as const;
+export const LEVEL_THREE: LevelOneConfig = {
+  id: 3,
+  title: "夜市流动摊",
+  subtitle: "玉米登场，留意移动食材与重复配方",
+  durationSeconds: 90,
+  starScores: [1200, 1800, 2400],
+  grillSlots: 2,
+  simultaneousOrders: 1,
+  ingredientSpeed: 18,
+  ingredientMotionAmplitude: 0,
+  ingredientKinds: ["beef", "pepper", "mushroom", "sausage", "corn"],
+  pauseTimersDuringTutorial: false,
+  tutorial: false,
+  recipes: [
+    ["corn", "corn"],
+    ["corn", "sausage", "beef"],
+    ["beef", "beef", "sausage"],
+    ["pepper", "mushroom", "mushroom"],
+  ],
+};
+
+export const LEVEL_FOUR: LevelOneConfig = {
+  id: 4,
+  title: "双客赶场",
+  subtitle: "鸡肉登场，同时照顾两位顾客",
+  durationSeconds: 90,
+  starScores: [1500, 2200, 3000],
+  grillSlots: 2,
+  simultaneousOrders: 2,
+  ingredientSpeed: 24,
+  ingredientMotionAmplitude: 0,
+  ingredientKinds: ["beef", "pepper", "mushroom", "sausage", "corn", "chicken"],
+  pauseTimersDuringTutorial: false,
+  tutorial: false,
+  recipes: [
+    ["chicken", "corn", "sausage"],
+    ["chicken", "corn", "beef"],
+    ["chicken", "chicken", "corn"],
+    ["beef", "beef", "sausage"],
+  ],
+};
+
+export const LEVEL_FIVE: LevelOneConfig = {
+  id: 5,
+  title: "三炉齐烤",
+  subtitle: "第三烤位开放，处理更长的满载订单",
+  durationSeconds: 90,
+  starScores: [1900, 2800, 3700],
+  grillSlots: 3,
+  simultaneousOrders: 2,
+  ingredientSpeed: 30,
+  ingredientMotionAmplitude: 0,
+  ingredientKinds: ["beef", "pepper", "mushroom", "sausage", "corn", "chicken"],
+  pauseTimersDuringTutorial: false,
+  tutorial: false,
+  recipes: [
+    ["chicken", "corn", "sausage", "beef"],
+    ["chicken", "chicken", "corn", "corn"],
+    ["beef", "beef", "sausage"],
+    ["pepper", "mushroom", "mushroom", "pepper"],
+  ],
+};
+
+export const PLAYABLE_LEVELS = [LEVEL_ONE, LEVEL_TWO, LEVEL_THREE, LEVEL_FOUR, LEVEL_FIVE] as const;
 
 export function getLevelConfig(levelId: number): LevelOneConfig {
-  return levelId === LEVEL_TWO.id ? LEVEL_TWO : LEVEL_ONE;
+  if (levelId === LEVEL_FIVE.id) return LEVEL_FIVE;
+  if (levelId === LEVEL_FOUR.id) return LEVEL_FOUR;
+  if (levelId === LEVEL_THREE.id) return LEVEL_THREE;
+  if (levelId === LEVEL_TWO.id) return LEVEL_TWO;
+  return LEVEL_ONE;
 }
 
 export const LEVEL_ONE_DONENESS = {

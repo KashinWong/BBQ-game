@@ -10,9 +10,17 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    const previewLevel = import.meta.env.DEV
+      ? Number(new URLSearchParams(window.location.search).get("previewLevel"))
+      : 0;
+    if (previewLevel >= 1 && previewLevel <= 5) {
+      this.scene.start("Gameplay", { levelId: previewLevel });
+      return;
+    }
+
     const progress = loadBrowserProgress();
-    const totalStars = progress.levelOneBestStars + progress.levelTwoBestStars;
-    const totalScore = progress.levelOneBestScore + progress.levelTwoBestScore;
+    const totalStars = progress.levelOneBestStars + progress.levelTwoBestStars + progress.levelThreeBestStars + progress.levelFourBestStars + progress.levelFiveBestStars;
+    const totalScore = progress.levelOneBestScore + progress.levelTwoBestScore + progress.levelThreeBestScore + progress.levelFourBestScore + progress.levelFiveBestScore;
     const g = this.add.graphics();
     g.fillGradientStyle(0x160b18, 0x160b18, 0x542512, 0x2a120d, 1);
     g.fillRect(0, 0, WIDTH, HEIGHT);
@@ -44,13 +52,20 @@ export class MainMenuScene extends Phaser.Scene {
     const record = this.add.container(WIDTH / 2, 385);
     const recordBg = this.add.rectangle(0, 0, 330, 96, 0x2d1713, 0.92)
       .setStrokeStyle(2, 0x8b4d2e, 0.85);
-    const stars = this.add.text(-78, -18, `${totalStars}/6 ★`, {
+    const stars = this.add.text(-78, -18, `${totalStars}/15 ★`, {
       fontFamily: "inherit", fontSize: "24px", fontStyle: "bold", color: "#facc15",
     }).setOrigin(0.5);
     const score = this.add.text(82, -18, `${totalScore} 分`, {
       fontFamily: "inherit", fontSize: "21px", fontStyle: "bold", color: "#fdba74",
     }).setOrigin(0.5);
-    const note = this.add.text(0, 25, progress.levelTwoUnlocked ? "晚市已经开放，香肠等你来烤" : "第 1 关获得一星，解锁晚市", {
+    const progressNote = progress.levelFiveUnlocked
+      ? "三炉摊已经开放，挑战三串并行烤制"
+      : progress.levelFourUnlocked
+        ? "双客摊已经开放，同时处理两个订单"
+      : progress.levelThreeUnlocked
+        ? "流动摊已经开放，挑战移动食材"
+      : progress.levelTwoUnlocked ? "晚市已经开放，香肠等你来烤" : "第 1 关获得一星，解锁晚市";
+    const note = this.add.text(0, 25, progressNote, {
       fontFamily: "inherit", fontSize: "12px", color: "#d6b291",
     }).setOrigin(0.5);
     record.add([recordBg, stars, score, note]);
@@ -66,7 +81,7 @@ export class MainMenuScene extends Phaser.Scene {
     start.on("pointerdown", () => this.scene.start("LevelSelect"));
     this.tweens.add({ targets: start, scale: 1.035, duration: 850, yoyo: true, repeat: -1, ease: "Sine.InOut" });
 
-    this.add.text(WIDTH / 2, 614, "MVP · 两个可玩关卡", {
+    this.add.text(WIDTH / 2, 614, "MVP · 五个可玩关卡", {
       fontFamily: "inherit", fontSize: "12px", color: "#a88b7b",
     }).setOrigin(0.5);
     this.add.text(WIDTH / 2, 790, "建议开启声音并使用竖屏游玩", {

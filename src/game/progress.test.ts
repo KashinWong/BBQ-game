@@ -25,8 +25,17 @@ test("level one progress keeps the best result and unlocks level two after one s
     levelOneBestStars: 3,
     levelTwoBestScore: 0,
     levelTwoBestStars: 0,
+    levelThreeBestScore: 0,
+    levelThreeBestStars: 0,
+    levelFourBestScore: 0,
+    levelFourBestStars: 0,
+    levelFiveBestScore: 0,
+    levelFiveBestStars: 0,
     tutorialCompleted: true,
     levelTwoUnlocked: true,
+    levelThreeUnlocked: false,
+    levelFourUnlocked: false,
+    levelFiveUnlocked: false,
   });
 });
 
@@ -42,6 +51,45 @@ test("level two stores its own best score and stars", () => {
   assert.equal(progress.levelTwoUnlocked, true);
 });
 
+test("level three stores its own best result after level two unlocks it", () => {
+  const storage = new MemoryStorage();
+  recordLevelOneResult(storage, { score: 700, stars: 1, tutorialCompleted: true });
+  recordLevelResult(storage, 2, { score: 950, stars: 1 });
+  recordLevelResult(storage, 3, { score: 1850, stars: 2 });
+
+  const progress = loadProgress(storage);
+  assert.equal(progress.levelThreeUnlocked, true);
+  assert.equal(progress.levelThreeBestScore, 1850);
+  assert.equal(progress.levelThreeBestStars, 2);
+});
+
+test("level four unlocks after level three earns a star and stores its own result", () => {
+  const storage = new MemoryStorage();
+  recordLevelOneResult(storage, { score: 700, stars: 1, tutorialCompleted: true });
+  recordLevelResult(storage, 2, { score: 950, stars: 1 });
+  recordLevelResult(storage, 3, { score: 1250, stars: 1 });
+  recordLevelResult(storage, 4, { score: 2250, stars: 2 });
+
+  const progress = loadProgress(storage);
+  assert.equal(progress.levelFourUnlocked, true);
+  assert.equal(progress.levelFourBestScore, 2250);
+  assert.equal(progress.levelFourBestStars, 2);
+});
+
+test("level five unlocks after level four earns a star and stores its own result", () => {
+  const storage = new MemoryStorage();
+  recordLevelOneResult(storage, { score: 700, stars: 1, tutorialCompleted: true });
+  recordLevelResult(storage, 2, { score: 950, stars: 1 });
+  recordLevelResult(storage, 3, { score: 1250, stars: 1 });
+  recordLevelResult(storage, 4, { score: 1550, stars: 1 });
+  recordLevelResult(storage, 5, { score: 2850, stars: 2 });
+
+  const progress = loadProgress(storage);
+  assert.equal(progress.levelFiveUnlocked, true);
+  assert.equal(progress.levelFiveBestScore, 2850);
+  assert.equal(progress.levelFiveBestStars, 2);
+});
+
 test("an existing score is upgraded when the easier star target changes", () => {
   const storage = new MemoryStorage();
   recordLevelOneResult(storage, { score: 699, stars: 0, tutorialCompleted: true });
@@ -51,7 +99,16 @@ test("an existing score is upgraded when the easier star target changes", () => 
     levelOneBestStars: 1,
     levelTwoBestScore: 0,
     levelTwoBestStars: 0,
+    levelThreeBestScore: 0,
+    levelThreeBestStars: 0,
+    levelFourBestScore: 0,
+    levelFourBestStars: 0,
+    levelFiveBestScore: 0,
+    levelFiveBestStars: 0,
     tutorialCompleted: true,
     levelTwoUnlocked: true,
+    levelThreeUnlocked: false,
+    levelFourUnlocked: false,
+    levelFiveUnlocked: false,
   });
 });

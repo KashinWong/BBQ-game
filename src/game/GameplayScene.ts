@@ -16,6 +16,10 @@ import { loadProgress, recordLevelOneResult, recordLevelResult } from "./progres
 import { advanceTutorial, type TutorialEvent, type TutorialStep } from "./tutorialFlow";
 import { BrowserFeedback } from "../platform/BrowserFeedback";
 import { SKEWER_INTERACTION } from "./interactionGeometry";
+import { ingredientPositionAt } from "./ingredientMotion";
+import type { GameProgress } from "./progress";
+import { findMatchingOrderIndex, recipeMatches } from "./orderQueue";
+import { buildGrillSlots, type GrillSlotPosition } from "./grillLayout";
 
 type SkewerLocation = "prep" | "dragging" | "tray" | "grill";
 
@@ -33,7 +37,6 @@ interface LayoutSpec {
   prep: RectSpec;
   tray: RectSpec;
   trash: RectSpec;
-  grillSlots: Array<{ x: number; y: number }>;
   skewerStart: { x: number; y: number };
 }
 
@@ -76,12 +79,21 @@ interface MovingIngredient {
   homeX: number;
   homeY: number;
   phase: number;
+  direction: -1 | 1;
 }
 
 interface OrderState {
   recipe: IngredientKind[];
   patience: number;
   maxPatience: number;
+}
+
+interface OrderView {
+  rect: RectSpec;
+  recipeText: Phaser.GameObjects.Text;
+  patienceFill: Phaser.GameObjects.Rectangle;
+  patienceText: Phaser.GameObjects.Text;
+  barWidth: number;
 }
 
 interface ActivePointer {
@@ -136,6 +148,22 @@ const FOOD: Record<IngredientKind, FoodDefinition> = {
     burntColor: 0x30201d,
     cookSeconds: 5,
   },
+  corn: {
+    label: "玉米",
+    shortLabel: "🌽",
+    color: 0xeabf39,
+    cookedColor: 0xc89022,
+    burntColor: 0x3d3020,
+    cookSeconds: 5.5,
+  },
+  chicken: {
+    label: "鸡肉",
+    shortLabel: "🍗",
+    color: 0xe7a47b,
+    cookedColor: 0xb96942,
+    burntColor: 0x3a2722,
+    cookSeconds: 6,
+  },
 };
 
 const LAYOUT: LayoutSpec = {
@@ -145,10 +173,6 @@ const LAYOUT: LayoutSpec = {
   tray: { x: 15, y: 462, width: 174, height: 68 },
   trash: { x: 201, y: 462, width: 174, height: 68 },
   prep: { x: 15, y: 540, width: 360, height: 245 },
-  grillSlots: [
-    { x: 195, y: 284 },
-    { x: 195, y: 390 },
-  ],
   skewerStart: { x: 112, y: 748 },
 };
 
@@ -157,6 +181,7 @@ export class GameplayScene extends Phaser.Scene {
   private readonly feedback = new BrowserFeedback();
   private level: LevelOneConfig = LEVEL_ONE;
   private levelId: LevelId = 1;
+  private grillPositions: GrillSlotPosition[] = buildGrillSlots(2);
 
   private movingIngredients: MovingIngredient[] = [];
   private allSkewers = new Set<SkewerState>();
@@ -174,6 +199,7 @@ export class GameplayScene extends Phaser.Scene {
   private nextSkewerId = 1;
   private nextRecipeIndex = 0;
   private pendingIngredientPickups = 0;
+  private ingredientMotionElapsed = 0;
   private started = false;
   private ended = false;
   private clockPaused = false;
@@ -184,13 +210,11 @@ export class GameplayScene extends Phaser.Scene {
   private tutorialStep: TutorialStep = "select-food";
   private storage?: Storage;
 
-  private order!: OrderState;
+  private orders: OrderState[] = [];
+  private orderViews: OrderView[] = [];
   private scoreText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
   private comboText!: Phaser.GameObjects.Text;
-  private orderRecipeText?: Phaser.GameObjects.Text;
-  private patienceFill?: Phaser.GameObjects.Rectangle;
-  private patienceText?: Phaser.GameObjects.Text;
   private toastText!: Phaser.GameObjects.Text;
   private goalText!: Phaser.GameObjects.Text;
   private tutorialText!: Phaser.GameObjects.Text;
@@ -203,13 +227,14 @@ export class GameplayScene extends Phaser.Scene {
   init(data: { levelId?: number }): void {
     this.level = getLevelConfig(data.levelId ?? 1);
     this.levelId = this.level.id;
+    this.grillPositions = buildGrillSlots(this.level.grillSlots);
   }
 
   create(): void {
     this.resetRuntimeState();
     this.drawLayout();
     this.createHud();
-    this.createOrder();
+    this.createOrders();
     this.spawnIngredientWave();
     this.createPrepSkewer();
     this.bindInput();
@@ -233,23 +258,27 @@ export class GameplayScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    this.updateIngredientMotion(_time);
     if (this.ended || !this.started || this.clockPaused || this.manualPaused || this.tutorialPaused) return;
 
     const seconds = Math.min(delta, 100) / 1000;
+    this.ingredientMotionElapsed += seconds;
+    this.updateIngredientMotion(this.ingredientMotionElapsed);
     const timersAreFrozen = this.tutorialActive && this.level.pauseTimersDuringTutorial;
     if (!timersAreFrozen) {
       this.timeRemaining = Math.max(0, this.timeRemaining - seconds);
-      this.order.patience = Math.max(0, this.order.patience - seconds);
+      for (const order of this.orders) {
+        order.patience = Math.max(0, order.patience - seconds);
+      }
     }
     this.updateCooking(seconds);
     this.updateTrashHold();
 
-    if (!timersAreFrozen && this.order.patience <= 0) {
+    const expiredOrderIndex = this.orders.findIndex((order) => order.patience <= 0);
+    if (!timersAreFrozen && expiredOrderIndex >= 0) {
       this.score = Math.max(0, this.score - 30);
       this.combo = 0;
       this.showToast("订单超时  -30", 0xfca5a5);
-      this.createOrder();
+      this.createOrder(expiredOrderIndex);
     }
 
     if (!timersAreFrozen && this.timeRemaining <= 0) {
@@ -263,7 +292,7 @@ export class GameplayScene extends Phaser.Scene {
   private resetRuntimeState(): void {
     this.movingIngredients = [];
     this.allSkewers = new Set<SkewerState>();
-    this.grillSlots = [null, null];
+    this.grillSlots = Array.from({ length: this.level.grillSlots }, () => null);
     this.traySkewer = null;
     this.prepSkewer = null;
     this.activePointer = null;
@@ -276,6 +305,7 @@ export class GameplayScene extends Phaser.Scene {
     this.nextSkewerId = 1;
     this.nextRecipeIndex = 0;
     this.pendingIngredientPickups = 0;
+    this.ingredientMotionElapsed = 0;
     this.started = false;
     this.ended = false;
     this.clockPaused = false;
@@ -285,9 +315,8 @@ export class GameplayScene extends Phaser.Scene {
     this.tutorialActive = this.level.tutorial;
     this.tutorialStep = "select-food";
     this.storage = undefined;
-    this.orderRecipeText = undefined;
-    this.patienceFill = undefined;
-    this.patienceText = undefined;
+    this.orders = [];
+    this.orderViews = [];
   }
 
   private drawLayout(): void {
@@ -326,9 +355,10 @@ export class GameplayScene extends Phaser.Scene {
       graphics.fillStyle(0xfb923c, 0.72).fillCircle(x + 2, this.layout.grill.y + this.layout.grill.height - 22, 4);
     }
 
-    this.layout.grillSlots.forEach(({ x, y }, index) => {
-      graphics.fillStyle(0x171412, 0.6).fillRoundedRect(x - 95, y - 34, 190, 68, 14);
-      graphics.lineStyle(2, 0xc17a4a, 0.55).strokeRoundedRect(x - 95, y - 34, 190, 68, 14);
+    const slotHeight = this.level.grillSlots === 3 ? 56 : 68;
+    this.grillPositions.forEach(({ x, y }, index) => {
+      graphics.fillStyle(0x171412, 0.6).fillRoundedRect(x - 95, y - slotHeight / 2, 190, slotHeight, 14);
+      graphics.lineStyle(2, 0xc17a4a, 0.55).strokeRoundedRect(x - 95, y - slotHeight / 2, 190, slotHeight, 14);
       this.add.text(x, y, `烤位 ${index + 1}`, {
         fontFamily: "inherit",
         fontSize: "12px",
@@ -336,19 +366,26 @@ export class GameplayScene extends Phaser.Scene {
       }).setOrigin(0.5);
     });
 
-    this.add.circle(this.layout.order.x + 31, this.layout.order.y + 54, 20, 0xf2c49d)
-      .setStrokeStyle(3, 0x7c3f24, 1);
-    this.add.text(this.layout.order.x + 31, this.layout.order.y + 55, "😋", {
+    if (this.level.simultaneousOrders === 1) {
+      this.add.circle(this.layout.order.x + 31, this.layout.order.y + 54, 20, 0xf2c49d)
+        .setStrokeStyle(3, 0x7c3f24, 1);
+      this.add.text(this.layout.order.x + 31, this.layout.order.y + 55, "😋", {
+        fontFamily: "inherit",
+        fontSize: "23px",
+      }).setOrigin(0.5);
+    }
+    this.add.text(
+      this.layout.order.x + (this.level.simultaneousOrders === 1 ? 58 : 12),
+      this.layout.order.y + 8,
+      this.level.simultaneousOrders === 1 ? "顾客订单 · 烤好后拖来出餐" : "双订单 · 烤好拖来会自动匹配顾客",
+      {
       fontFamily: "inherit",
-      fontSize: "23px",
-    }).setOrigin(0.5);
-    this.add.text(this.layout.order.x + 58, this.layout.order.y + 10, "顾客订单 · 烤好后拖来出餐", {
-      fontFamily: "inherit",
-      fontSize: "12px",
+      fontSize: this.level.simultaneousOrders === 1 ? "12px" : "11px",
       fontStyle: "bold",
       color: "#ffe0b2",
       lineSpacing: 2,
-    });
+      },
+    );
     this.add.text(this.layout.grill.x + 12, this.layout.grill.y + 10, "炭火烤架 · 点击烤串翻面", {
       fontFamily: "inherit",
       fontSize: "12px",
@@ -491,8 +528,8 @@ export class GameplayScene extends Phaser.Scene {
     const record = this.add.text(
       WORLD_WIDTH / 2,
       480,
-      progress && (this.levelId === 1 ? progress.levelOneBestScore : progress.levelTwoBestScore) > 0
-        ? `历史最高 ${this.levelId === 1 ? progress.levelOneBestScore : progress.levelTwoBestScore} 分 · ${"★".repeat(this.levelId === 1 ? progress.levelOneBestStars : progress.levelTwoBestStars)}`
+      progress && this.bestScoreFor(progress) > 0
+        ? `历史最高 ${this.bestScoreFor(progress)} 分 · ${"★".repeat(this.bestStarsFor(progress))}`
         : this.tutorialActive ? "首次挑战将开启互动教学" : "准备刷新你的最高分",
       {
         fontFamily: "inherit",
@@ -671,16 +708,28 @@ export class GameplayScene extends Phaser.Scene {
     layer.add([veil, card, title, help, resume, restart, select]);
   }
 
-  private createOrder(): void {
+  private createOrders(): void {
+    for (let index = 0; index < this.level.simultaneousOrders; index += 1) {
+      this.orderViews.push(this.createOrderView(index));
+      this.createOrder(index);
+    }
+  }
+
+  private createOrder(index: number): void {
     const recipe = [...this.level.recipes[this.nextRecipeIndex % this.level.recipes.length]];
     this.nextRecipeIndex += 1;
     const patience = calculateOrderPatienceSeconds(recipe, FOOD);
-    this.order = { recipe, patience, maxPatience: patience };
+    this.orders[index] = { recipe, patience, maxPatience: patience };
+    this.updateOrderView(index);
+    this.refreshIngredientTargets();
+  }
 
-    if (!this.orderRecipeText) {
+  private createOrderView(index: number): OrderView {
+    const isDual = this.level.simultaneousOrders === 2;
+    if (!isDual) {
       const centerX = this.layout.order.x + this.layout.order.width / 2 + 24;
       const centerY = this.layout.order.y + this.layout.order.height / 2;
-      this.orderRecipeText = this.add.text(centerX, centerY, "", {
+      const recipeText = this.add.text(centerX, centerY, "", {
         fontFamily: "inherit",
         fontSize: "18px",
         fontStyle: "bold",
@@ -697,14 +746,14 @@ export class GameplayScene extends Phaser.Scene {
         8,
         0x17202a,
       );
-      this.patienceFill = this.add.rectangle(
+      const patienceFill = this.add.rectangle(
         this.layout.order.x + 14,
         this.layout.order.y + this.layout.order.height - 14,
         this.layout.order.width - 28,
         8,
         0x60a5fa,
       ).setOrigin(0, 0.5);
-      this.patienceText = this.add.text(
+      const patienceText = this.add.text(
         this.layout.order.x + this.layout.order.width - 14,
         this.layout.order.y + this.layout.order.height - 32,
         "",
@@ -714,10 +763,69 @@ export class GameplayScene extends Phaser.Scene {
           color: "#bfdbfe",
         },
       ).setOrigin(1, 0.5);
+      return {
+        rect: this.layout.order,
+        recipeText,
+        patienceFill,
+        patienceText,
+        barWidth: this.layout.order.width - 28,
+      };
     }
 
-    this.orderRecipeText!.setText(recipe.map((kind) => `${FOOD[kind].shortLabel} ${FOOD[kind].label}`).join("   "));
-    this.refreshIngredientTargets();
+    const gap = 8;
+    const cardWidth = (this.layout.order.width - 22 - gap) / 2;
+    const rect: RectSpec = {
+      x: this.layout.order.x + 7 + index * (cardWidth + gap),
+      y: this.layout.order.y + 27,
+      width: cardWidth,
+      height: this.layout.order.height - 34,
+    };
+    this.add.rectangle(
+      rect.x + rect.width / 2,
+      rect.y + rect.height / 2,
+      rect.width,
+      rect.height,
+      index === 0 ? 0x59301e : 0x4d2a22,
+      0.96,
+    ).setStrokeStyle(1.5, index === 0 ? 0xf59e0b : 0xf0a35a, 0.75);
+    this.add.text(rect.x + 9, rect.y + 9, index === 0 ? "😋 A" : "🤤 B", {
+      fontFamily: "inherit",
+      fontSize: "11px",
+      fontStyle: "bold",
+      color: "#fed7aa",
+    }).setOrigin(0, 0.5);
+    const recipeText = this.add.text(rect.x + rect.width / 2, rect.y + 36, "", {
+      fontFamily: "inherit",
+      fontSize: "18px",
+      color: "#ffffff",
+      align: "center",
+    }).setOrigin(0.5);
+    const barWidth = rect.width - 16;
+    this.add.rectangle(rect.x + rect.width / 2, rect.y + rect.height - 9, barWidth, 6, 0x17202a);
+    const patienceFill = this.add.rectangle(
+      rect.x + 8,
+      rect.y + rect.height - 9,
+      barWidth,
+      6,
+      0x60a5fa,
+    ).setOrigin(0, 0.5);
+    const patienceText = this.add.text(rect.x + rect.width - 7, rect.y + 10, "", {
+      fontFamily: "inherit",
+      fontSize: "9px",
+      color: "#bfdbfe",
+    }).setOrigin(1, 0.5);
+    return { rect, recipeText, patienceFill, patienceText, barWidth };
+  }
+
+  private updateOrderView(index: number): void {
+    const order = this.orders[index];
+    const view = this.orderViews[index];
+    if (!order || !view) return;
+    view.recipeText.setText(
+      this.level.simultaneousOrders === 1
+        ? order.recipe.map((kind) => `${FOOD[kind].shortLabel} ${FOOD[kind].label}`).join("   ")
+        : order.recipe.map((kind) => FOOD[kind].shortLabel).join("  "),
+    );
   }
 
   private spawnIngredientWave(): void {
@@ -728,7 +836,7 @@ export class GameplayScene extends Phaser.Scene {
   }
 
   private spawnIngredient(kind: IngredientKind, x: number, y: number): MovingIngredient {
-    const isOrderTarget = this.order.recipe.includes(kind);
+    const isOrderTarget = this.orders.some((order) => order.recipe.includes(kind));
     const body = this.add.rectangle(0, 0, 42, 36, FOOD[kind].color, 1).setStrokeStyle(
       isOrderTarget ? 3 : 1.5,
       isOrderTarget ? 0xfde68a : 0xffffff,
@@ -740,7 +848,8 @@ export class GameplayScene extends Phaser.Scene {
       fontStyle: "bold",
       color: "#ffffff",
     }).setOrigin(0.5);
-    const view = this.add.container(x, y, [body, label]).setDepth(20).setSize(58, 52);
+    const touchWidth = this.level.ingredientKinds.length >= 6 ? 54 : 58;
+    const view = this.add.container(x, y, [body, label]).setDepth(20).setSize(touchWidth, 52);
     const ingredient: MovingIngredient = {
       kind,
       view,
@@ -748,6 +857,7 @@ export class GameplayScene extends Phaser.Scene {
       homeX: x,
       homeY: y,
       phase: this.movingIngredients.length * 0.83 + this.levelId,
+      direction: y < this.layout.prep.y + 100 ? 1 : -1,
     };
     view.setInteractive({ useHandCursor: true });
     view.on("pointerdown", () => this.pickIngredient(ingredient));
@@ -797,7 +907,7 @@ export class GameplayScene extends Phaser.Scene {
           `${FOOD[ingredient.kind].label}自动上签 · ${skewer.pieces.length}/${MAX_SKEWER_PIECES}`,
           0xbbf7d0,
         );
-        if (this.sameRecipe(skewer.pieces.map(({ kind }) => kind), this.order.recipe)) {
+        if (this.orders[0] && recipeMatches(skewer.pieces.map(({ kind }) => kind), this.orders[0].recipe)) {
           this.advanceTutorialStep("recipe-complete");
         }
       },
@@ -806,7 +916,7 @@ export class GameplayScene extends Phaser.Scene {
 
   private refreshIngredientTargets(): void {
     for (const ingredient of this.movingIngredients) {
-      const isTarget = this.order.recipe.includes(ingredient.kind);
+      const isTarget = this.orders.some((order) => order.recipe.includes(ingredient.kind));
       ingredient.body.setStrokeStyle(
         isTarget ? 3 : 1.5,
         isTarget ? 0xfde68a : 0xffffff,
@@ -815,15 +925,23 @@ export class GameplayScene extends Phaser.Scene {
     }
   }
 
-  private updateIngredientMotion(time: number): void {
+  private updateIngredientMotion(timeSeconds: number): void {
     const amplitude = this.level.ingredientMotionAmplitude;
-    if (amplitude <= 0) return;
+    const speed = this.level.ingredientSpeed;
+    if (amplitude <= 0 && speed <= 0) return;
     for (const ingredient of this.movingIngredients) {
-      const wave = time / 1150 + ingredient.phase;
-      ingredient.view.setPosition(
-        ingredient.homeX + Math.sin(wave) * amplitude,
-        ingredient.homeY + Math.cos(wave * 0.8) * 2,
-      );
+      const position = ingredientPositionAt({
+        homeX: ingredient.homeX,
+        homeY: ingredient.homeY,
+        phase: ingredient.phase,
+        direction: ingredient.direction,
+        timeSeconds,
+        speed,
+        swayAmplitude: amplitude,
+        minX: this.layout.prep.x + (this.level.ingredientKinds.length >= 6 ? 24 : 28),
+        maxX: this.layout.prep.x + this.layout.prep.width - (this.level.ingredientKinds.length >= 6 ? 24 : 28),
+      });
+      ingredient.view.setPosition(position.x, position.y);
     }
   }
 
@@ -995,14 +1113,22 @@ export class GameplayScene extends Phaser.Scene {
       return;
     }
 
-    if (this.contains(this.layout.order, dropX, dropY) && active.skewer.pieces.length > 0) {
-      if (this.tryServe(active.skewer)) return;
+    const matchingOrderIndex = this.contains(this.layout.order, dropX, dropY)
+      ? findMatchingOrderIndex(
+        active.skewer.pieces.map(({ kind }) => kind),
+        this.orders.map(({ recipe }) => recipe),
+      )
+      : null;
+    const orderIndex = matchingOrderIndex ?? this.orderIndexAt(dropX, dropY);
+    if (orderIndex !== null && active.skewer.pieces.length > 0) {
+      if (this.tryServe(active.skewer, orderIndex)) return;
       this.restoreDraggedSkewer(active);
       return;
     }
 
-    const grillSlot = this.layout.grillSlots.findIndex(({ x, y }, index) =>
-      this.grillSlots[index] === null && Phaser.Math.Distance.Between(x, y, dropX, dropY) < 68,
+    const grillDropRadius = this.level.grillSlots === 3 ? 48 : 68;
+    const grillSlot = this.grillPositions.findIndex(({ x, y }, index) =>
+      this.grillSlots[index] === null && Phaser.Math.Distance.Between(x, y, dropX, dropY) < grillDropRadius,
     );
     if (grillSlot >= 0 && active.skewer.pieces.length > 0) {
       this.placeOnGrill(active.skewer, grillSlot);
@@ -1070,10 +1196,11 @@ export class GameplayScene extends Phaser.Scene {
   }
 
   private placeOnGrill(skewer: SkewerState, slot: number): void {
-    const position = this.layout.grillSlots[slot];
+    const position = this.grillPositions[slot];
     skewer.location = "grill";
     skewer.grillSlot = slot;
     skewer.view.setPosition(position.x, position.y).setDepth(80);
+    skewer.view.setSize(SKEWER_INTERACTION.width, this.level.grillSlots === 3 ? 64 : SKEWER_INTERACTION.height);
     this.grillSlots[slot] = skewer;
     this.buildSkewerVisual(skewer);
     this.showToast(`进入烤位 ${slot + 1} · 点击翻面`, 0xfed7aa);
@@ -1087,6 +1214,7 @@ export class GameplayScene extends Phaser.Scene {
       this.layout.tray.x + this.layout.tray.width / 2,
       this.layout.tray.y + this.layout.tray.height / 2 + 8,
     ).setDepth(80);
+    skewer.view.setSize(SKEWER_INTERACTION.width, SKEWER_INTERACTION.height);
     this.traySkewer = skewer;
     this.refreshSkewerVisual(skewer);
     this.showToast("已放入待烤托盘", 0xe7e5e4);
@@ -1153,17 +1281,19 @@ export class GameplayScene extends Phaser.Scene {
     }
   }
 
-  private tryServe(skewer: SkewerState): boolean {
+  private tryServe(skewer: SkewerState, orderIndex: number): boolean {
+    const order = this.orders[orderIndex];
+    if (!order) return false;
     const result = evaluateService({
-      expectedRecipe: this.order.recipe,
+      expectedRecipe: order.recipe,
       pieces: skewer.pieces,
-      patienceRatio: this.order.patience / this.order.maxPatience,
+      patienceRatio: order.patience / order.maxPatience,
       comboBefore: this.combo,
     });
     if (!result.accepted) {
       this.score = Math.max(0, this.score - result.scorePenalty);
       this.combo = result.comboAfter;
-      this.order.patience = Math.max(0, this.order.patience - this.order.maxPatience * 0.2);
+      order.patience = Math.max(0, order.patience - order.maxPatience * 0.2);
       this.showToast(
         result.reason === "wrong-recipe" ? "配方不对 · 顾客拒收  -50" : "还有生面 · 顾客拒收  -50",
         0xfca5a5,
@@ -1189,18 +1319,13 @@ export class GameplayScene extends Phaser.Scene {
     }
     this.destroySkewer(skewer);
     this.ensurePrepSkewer(skewer);
-    this.createOrder();
+    this.createOrder(orderIndex);
     this.updateHud();
     if (finishingTutorial) {
       this.advanceTutorialStep("served");
       this.showTutorialScore(result.earnedScore);
     }
     return true;
-  }
-
-  private sameRecipe(actual: IngredientKind[], expected: IngredientKind[]): boolean {
-    if (actual.length !== expected.length) return false;
-    return [...actual].sort().join("|") === [...expected].sort().join("|");
   }
 
   private destroySkewer(skewer: SkewerState): void {
@@ -1218,12 +1343,14 @@ export class GameplayScene extends Phaser.Scene {
     const stars = starsForScore(this.score, this.level);
     const nextTarget = stars === 3 ? this.level.starScores[2] : this.level.starScores[stars];
     this.goalText.setText(stars === 3 ? "★★★ 满星" : `${"★".repeat(stars)} ${this.score}/${nextTarget}`);
-    this.patienceText?.setText(`耐心 ${Math.ceil(this.order.patience)}s`);
-    if (this.patienceFill) {
-      const ratio = Phaser.Math.Clamp(this.order.patience / this.order.maxPatience, 0, 1);
-      this.patienceFill.displayWidth = (this.layout.order.width - 28) * ratio;
-      this.patienceFill.setFillStyle(ratio < 0.25 ? 0xef4444 : ratio < 0.55 ? 0xf59e0b : 0x60a5fa);
-    }
+    this.orders.forEach((order, index) => {
+      const view = this.orderViews[index];
+      if (!view) return;
+      const ratio = Phaser.Math.Clamp(order.patience / order.maxPatience, 0, 1);
+      view.patienceText.setText(`${this.level.simultaneousOrders === 1 ? "耐心 " : ""}${Math.ceil(order.patience)}s`);
+      view.patienceFill.displayWidth = view.barWidth * ratio;
+      view.patienceFill.setFillStyle(ratio < 0.25 ? 0xef4444 : ratio < 0.55 ? 0xf59e0b : 0x60a5fa);
+    });
   }
 
   private celebrateGoalReached(): void {
@@ -1283,7 +1410,7 @@ export class GameplayScene extends Phaser.Scene {
           stars,
           tutorialCompleted: !this.tutorialActive || this.tutorialStep === "complete",
         })
-        : recordLevelResult(this.storage, 2, { score: this.score, stars })
+        : recordLevelResult(this.storage, this.levelId, { score: this.score, stars })
       : undefined;
     const veil = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x0c0a09, 0.86).setDepth(500);
     const card = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 - 4, 334, 440, 0x3d2418, 1)
@@ -1304,7 +1431,7 @@ export class GameplayScene extends Phaser.Scene {
     const stats = this.add.text(
       WORLD_WIDTH / 2,
       WORLD_HEIGHT / 2 - 36,
-      `本局积分  ${this.score}\n历史最高  ${progress ? (this.levelId === 1 ? progress.levelOneBestScore : progress.levelTwoBestScore) : this.score}\n完成订单  ${this.completedOrders}\n完美出餐  ${this.perfectOrders}\n最高连击  ${this.maxCombo}`,
+      `本局积分  ${this.score}\n历史最高  ${progress ? this.bestScoreFor(progress) : this.score}\n完成订单  ${this.completedOrders}\n完美出餐  ${this.perfectOrders}\n最高连击  ${this.maxCombo}`,
       {
         fontFamily: "inherit",
         fontSize: "16px",
@@ -1317,7 +1444,7 @@ export class GameplayScene extends Phaser.Scene {
       WORLD_WIDTH / 2,
       WORLD_HEIGHT / 2 + 87,
       passed
-        ? this.levelId === 1 ? "第 2 关已解锁" : "更多关卡正在筹备"
+        ? this.levelId < 5 ? `第 ${this.levelId + 1} 关已解锁` : "更多关卡正在筹备"
         : `再得 ${this.level.starScores[0] - this.score} 分即可过关`,
       {
         fontFamily: "inherit",
@@ -1334,7 +1461,7 @@ export class GameplayScene extends Phaser.Scene {
       padding: { left: 34, right: 34, top: 12, bottom: 12 },
     }).setOrigin(0.5).setDepth(502).setInteractive({ useHandCursor: true });
     replay.on("pointerdown", () => this.scene.restart({ levelId: this.levelId }));
-    const secondaryLabel = passed && this.levelId === 1 ? "进入第 2 关" : "返回选关";
+    const secondaryLabel = passed && this.levelId < 5 ? `进入第 ${this.levelId + 1} 关` : "返回选关";
     const secondary = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 + 198, secondaryLabel, {
       fontFamily: "inherit",
       fontSize: "15px",
@@ -1342,7 +1469,7 @@ export class GameplayScene extends Phaser.Scene {
       padding: { left: 30, right: 30, top: 8, bottom: 8 },
     }).setOrigin(0.5).setDepth(502).setInteractive({ useHandCursor: true });
     secondary.on("pointerdown", () => {
-      if (passed && this.levelId === 1) this.scene.restart({ levelId: 2 });
+      if (passed && this.levelId < 5) this.scene.restart({ levelId: this.levelId + 1 });
       else this.scene.start("LevelSelect");
     });
     void veil;
@@ -1355,6 +1482,27 @@ export class GameplayScene extends Phaser.Scene {
 
   private contains(rect: RectSpec, x: number, y: number): boolean {
     return x >= rect.x && x <= rect.x + rect.width && y >= rect.y && y <= rect.y + rect.height;
+  }
+
+  private orderIndexAt(x: number, y: number): number | null {
+    const index = this.orderViews.findIndex(({ rect }) => this.contains(rect, x, y));
+    return index >= 0 ? index : null;
+  }
+
+  private bestScoreFor(progress: GameProgress): number {
+    if (this.levelId === 1) return progress.levelOneBestScore;
+    if (this.levelId === 2) return progress.levelTwoBestScore;
+    if (this.levelId === 3) return progress.levelThreeBestScore;
+    if (this.levelId === 4) return progress.levelFourBestScore;
+    return progress.levelFiveBestScore;
+  }
+
+  private bestStarsFor(progress: GameProgress): number {
+    if (this.levelId === 1) return progress.levelOneBestStars;
+    if (this.levelId === 2) return progress.levelTwoBestStars;
+    if (this.levelId === 3) return progress.levelThreeBestStars;
+    if (this.levelId === 4) return progress.levelFourBestStars;
+    return progress.levelFiveBestStars;
   }
 
   private pauseClock(): void {
