@@ -11,11 +11,14 @@ const EMPTY_PROGRESS: GameProgress = {
   levelFourBestStars: 0,
   levelFiveBestScore: 0,
   levelFiveBestStars: 0,
+  levelSixBestScore: 0,
+  levelSixBestStars: 0,
   tutorialCompleted: false,
   levelTwoUnlocked: false,
   levelThreeUnlocked: false,
   levelFourUnlocked: false,
   levelFiveUnlocked: false,
+  levelSixUnlocked: false,
 };
 
 export function loadBrowserProgress(): GameProgress {

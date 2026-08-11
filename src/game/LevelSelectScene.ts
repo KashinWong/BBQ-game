@@ -25,7 +25,7 @@ export class LevelSelectScene extends Phaser.Scene {
     this.add.text(56, 31, "选择关卡", {
       fontFamily: "inherit", fontSize: "22px", fontStyle: "bold", color: "#fff7ed",
     });
-    this.add.text(57, 59, `已获得 ${progress.levelOneBestStars + progress.levelTwoBestStars + progress.levelThreeBestStars + progress.levelFourBestStars + progress.levelFiveBestStars}/15 ★`, {
+    this.add.text(57, 59, `已获得 ${progress.levelOneBestStars + progress.levelTwoBestStars + progress.levelThreeBestStars + progress.levelFourBestStars + progress.levelFiveBestStars + progress.levelSixBestStars}/18 ★`, {
       fontFamily: "inherit", fontSize: "11px", color: "#facc15",
     });
 
@@ -34,13 +34,7 @@ export class LevelSelectScene extends Phaser.Scene {
     this.createPlayableCard(cards[2], 306);
     this.createPlayableCard(cards[3], 396);
     this.createPlayableCard(cards[4], 486);
-
-    this.add.text(24, 538, "后续摊位", {
-      fontFamily: "inherit", fontSize: "15px", fontStyle: "bold", color: "#e7b98d",
-    });
-    cards.slice(5).forEach((card) => {
-      this.createComingSoonCard(card, WIDTH / 2, 612);
-    });
+    this.createPlayableCard(cards[5], 576);
     this.add.text(WIDTH / 2, 790, "每关获得一星即可继续前进", {
       fontFamily: "inherit", fontSize: "11px", color: "#8f7568",
     }).setOrigin(0.5);
@@ -73,16 +67,4 @@ export class LevelSelectScene extends Phaser.Scene {
     if (enabled) bg.on("pointerdown", () => this.scene.start("Gameplay", { levelId: card.id }));
   }
 
-  private createComingSoonCard(card: LevelCard, x: number, y: number): void {
-    const bg = this.add.rectangle(x, y, 164, 104, 0x29211f, 0.92).setStrokeStyle(1.5, 0x584945, 0.75);
-    const number = this.add.text(x, y - 23, `${card.id}`, {
-      fontFamily: "inherit", fontSize: "25px", fontStyle: "bold", color: "#8e7c74",
-    }).setOrigin(0.5);
-    const hint = this.add.text(x, y + 19, card.unlockHint ?? "后续开放", {
-      fontFamily: "inherit", fontSize: "11px", color: "#776862",
-    }).setOrigin(0.5);
-    void bg;
-    void number;
-    void hint;
-  }
 }

@@ -31,11 +31,14 @@ test("level one progress keeps the best result and unlocks level two after one s
     levelFourBestStars: 0,
     levelFiveBestScore: 0,
     levelFiveBestStars: 0,
+    levelSixBestScore: 0,
+    levelSixBestStars: 0,
     tutorialCompleted: true,
     levelTwoUnlocked: true,
     levelThreeUnlocked: false,
     levelFourUnlocked: false,
     levelFiveUnlocked: false,
+    levelSixUnlocked: false,
   });
 });
 
@@ -90,6 +93,21 @@ test("level five unlocks after level four earns a star and stores its own result
   assert.equal(progress.levelFiveBestStars, 2);
 });
 
+test("level six unlocks after level five earns a star and stores the final result", () => {
+  const storage = new MemoryStorage();
+  recordLevelOneResult(storage, { score: 700, stars: 1, tutorialCompleted: true });
+  recordLevelResult(storage, 2, { score: 950, stars: 1 });
+  recordLevelResult(storage, 3, { score: 1250, stars: 1 });
+  recordLevelResult(storage, 4, { score: 1550, stars: 1 });
+  recordLevelResult(storage, 5, { score: 1950, stars: 1 });
+  recordLevelResult(storage, 6, { score: 3450, stars: 2 });
+
+  const progress = loadProgress(storage);
+  assert.equal(progress.levelSixUnlocked, true);
+  assert.equal(progress.levelSixBestScore, 3450);
+  assert.equal(progress.levelSixBestStars, 2);
+});
+
 test("an existing score is upgraded when the easier star target changes", () => {
   const storage = new MemoryStorage();
   recordLevelOneResult(storage, { score: 699, stars: 0, tutorialCompleted: true });
@@ -105,10 +123,13 @@ test("an existing score is upgraded when the easier star target changes", () => 
     levelFourBestStars: 0,
     levelFiveBestScore: 0,
     levelFiveBestStars: 0,
+    levelSixBestScore: 0,
+    levelSixBestStars: 0,
     tutorialCompleted: true,
     levelTwoUnlocked: true,
     levelThreeUnlocked: false,
     levelFourUnlocked: false,
     levelFiveUnlocked: false,
+    levelSixUnlocked: false,
   });
 });

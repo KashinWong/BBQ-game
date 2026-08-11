@@ -14,11 +14,14 @@ const lockedProgress: GameProgress = {
   levelFourBestStars: 0,
   levelFiveBestScore: 0,
   levelFiveBestStars: 0,
+  levelSixBestScore: 0,
+  levelSixBestStars: 0,
   tutorialCompleted: false,
   levelTwoUnlocked: false,
   levelThreeUnlocked: false,
   levelFourUnlocked: false,
   levelFiveUnlocked: false,
+  levelSixUnlocked: false,
 };
 
 test("level selection unlocks level two only after level one earns a star", () => {
@@ -49,6 +52,29 @@ test("level selection unlocks level five only after level four earns a star", ()
     levelFiveUnlocked: true,
   });
   assert.equal(unlocked[4].status, "playable");
+});
+
+test("level selection unlocks the final level only after level five earns a star", () => {
+  const locked = buildLevelSelection({
+    ...lockedProgress,
+    levelTwoUnlocked: true,
+    levelThreeUnlocked: true,
+    levelFourUnlocked: true,
+    levelFiveUnlocked: true,
+  });
+  assert.equal(locked[5].status, "locked");
+
+  const unlocked = buildLevelSelection({
+    ...lockedProgress,
+    levelTwoUnlocked: true,
+    levelThreeUnlocked: true,
+    levelFourUnlocked: true,
+    levelFiveUnlocked: true,
+    levelFiveBestStars: 1,
+    levelSixUnlocked: true,
+  });
+  assert.equal(unlocked[5].status, "playable");
+  assert.equal(unlocked.length, 6);
 });
 
 test("level selection unlocks level four only after level three earns a star", () => {

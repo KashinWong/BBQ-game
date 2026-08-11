@@ -1,5 +1,5 @@
 export type IngredientKind = "beef" | "pepper" | "mushroom" | "sausage" | "corn" | "chicken";
-export type LevelId = 1 | 2 | 3 | 4 | 5;
+export type LevelId = 1 | 2 | 3 | 4 | 5 | 6;
 
 export interface LevelOneConfig {
   id: LevelId;
@@ -120,9 +120,32 @@ export const LEVEL_FIVE: LevelOneConfig = {
   ],
 };
 
-export const PLAYABLE_LEVELS = [LEVEL_ONE, LEVEL_TWO, LEVEL_THREE, LEVEL_FOUR, LEVEL_FIVE] as const;
+export const LEVEL_SIX: LevelOneConfig = {
+  id: 6,
+  title: "高手终考",
+  subtitle: "全机制齐上阵，守住三炉与双订单",
+  durationSeconds: 90,
+  starScores: [2300, 3400, 4500],
+  grillSlots: 3,
+  simultaneousOrders: 2,
+  ingredientSpeed: 38,
+  ingredientMotionAmplitude: 0,
+  ingredientKinds: ["beef", "pepper", "mushroom", "sausage", "corn", "chicken"],
+  pauseTimersDuringTutorial: false,
+  tutorial: false,
+  recipes: [
+    ["chicken", "corn", "corn", "chicken"],
+    ["beef", "sausage", "corn", "beef"],
+    ["pepper", "mushroom", "mushroom", "pepper"],
+    ["sausage", "beef", "sausage"],
+    ["chicken", "corn", "sausage", "beef"],
+  ],
+};
+
+export const PLAYABLE_LEVELS = [LEVEL_ONE, LEVEL_TWO, LEVEL_THREE, LEVEL_FOUR, LEVEL_FIVE, LEVEL_SIX] as const;
 
 export function getLevelConfig(levelId: number): LevelOneConfig {
+  if (levelId === LEVEL_SIX.id) return LEVEL_SIX;
   if (levelId === LEVEL_FIVE.id) return LEVEL_FIVE;
   if (levelId === LEVEL_FOUR.id) return LEVEL_FOUR;
   if (levelId === LEVEL_THREE.id) return LEVEL_THREE;

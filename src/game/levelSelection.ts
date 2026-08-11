@@ -1,4 +1,4 @@
-import { LEVEL_FIVE, LEVEL_FOUR, LEVEL_ONE, LEVEL_THREE, LEVEL_TWO } from "./levelOneRules.ts";
+import { LEVEL_FIVE, LEVEL_FOUR, LEVEL_ONE, LEVEL_SIX, LEVEL_THREE, LEVEL_TWO } from "./levelOneRules.ts";
 import type { GameProgress } from "./progress.ts";
 
 export type LevelCardStatus = "playable" | "locked" | "coming-soon";
@@ -59,14 +59,14 @@ export function buildLevelSelection(progress: GameProgress): LevelCard[] {
       status: progress.levelFiveUnlocked ? "playable" : "locked",
       unlockHint: progress.levelFiveUnlocked ? undefined : "第 4 关获得 1 星后解锁",
     },
-    ...Array.from({ length: 1 }, (_, index): LevelCard => ({
-      id: index + 6,
-      title: `第 ${index + 6} 关`,
-      subtitle: "新摊位筹备中",
-      bestScore: 0,
-      bestStars: 0,
-      status: "coming-soon",
-      unlockHint: "后续开放",
-    })),
+    {
+      id: LEVEL_SIX.id,
+      title: LEVEL_SIX.title,
+      subtitle: LEVEL_SIX.subtitle,
+      bestScore: progress.levelSixBestScore,
+      bestStars: progress.levelSixBestStars,
+      status: progress.levelSixUnlocked ? "playable" : "locked",
+      unlockHint: progress.levelSixUnlocked ? undefined : "第 5 关获得 1 星后解锁",
+    },
   ];
 }

@@ -1444,7 +1444,7 @@ export class GameplayScene extends Phaser.Scene {
       WORLD_WIDTH / 2,
       WORLD_HEIGHT / 2 + 87,
       passed
-        ? this.levelId < 5 ? `第 ${this.levelId + 1} 关已解锁` : "更多关卡正在筹备"
+        ? this.levelId < 6 ? `第 ${this.levelId + 1} 关已解锁` : "六关全通关 · 继续冲击三星！"
         : `再得 ${this.level.starScores[0] - this.score} 分即可过关`,
       {
         fontFamily: "inherit",
@@ -1461,7 +1461,7 @@ export class GameplayScene extends Phaser.Scene {
       padding: { left: 34, right: 34, top: 12, bottom: 12 },
     }).setOrigin(0.5).setDepth(502).setInteractive({ useHandCursor: true });
     replay.on("pointerdown", () => this.scene.restart({ levelId: this.levelId }));
-    const secondaryLabel = passed && this.levelId < 5 ? `进入第 ${this.levelId + 1} 关` : "返回选关";
+    const secondaryLabel = passed && this.levelId < 6 ? `进入第 ${this.levelId + 1} 关` : "返回选关";
     const secondary = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT / 2 + 198, secondaryLabel, {
       fontFamily: "inherit",
       fontSize: "15px",
@@ -1469,7 +1469,7 @@ export class GameplayScene extends Phaser.Scene {
       padding: { left: 30, right: 30, top: 8, bottom: 8 },
     }).setOrigin(0.5).setDepth(502).setInteractive({ useHandCursor: true });
     secondary.on("pointerdown", () => {
-      if (passed && this.levelId < 5) this.scene.restart({ levelId: this.levelId + 1 });
+      if (passed && this.levelId < 6) this.scene.restart({ levelId: this.levelId + 1 });
       else this.scene.start("LevelSelect");
     });
     void veil;
@@ -1494,7 +1494,8 @@ export class GameplayScene extends Phaser.Scene {
     if (this.levelId === 2) return progress.levelTwoBestScore;
     if (this.levelId === 3) return progress.levelThreeBestScore;
     if (this.levelId === 4) return progress.levelFourBestScore;
-    return progress.levelFiveBestScore;
+    if (this.levelId === 5) return progress.levelFiveBestScore;
+    return progress.levelSixBestScore;
   }
 
   private bestStarsFor(progress: GameProgress): number {
@@ -1502,7 +1503,8 @@ export class GameplayScene extends Phaser.Scene {
     if (this.levelId === 2) return progress.levelTwoBestStars;
     if (this.levelId === 3) return progress.levelThreeBestStars;
     if (this.levelId === 4) return progress.levelFourBestStars;
-    return progress.levelFiveBestStars;
+    if (this.levelId === 5) return progress.levelFiveBestStars;
+    return progress.levelSixBestStars;
   }
 
   private pauseClock(): void {

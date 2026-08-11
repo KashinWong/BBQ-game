@@ -1,4 +1,4 @@
-import { LEVEL_FIVE, LEVEL_FOUR, LEVEL_THREE, LEVEL_TWO, starsForScore, type LevelId } from "./levelOneRules.ts";
+import { LEVEL_FIVE, LEVEL_FOUR, LEVEL_SIX, LEVEL_THREE, LEVEL_TWO, starsForScore, type LevelId } from "./levelOneRules.ts";
 
 const STORAGE_KEY = "bbq-master.progress.v1";
 
@@ -18,11 +18,14 @@ export interface GameProgress {
   levelFourBestStars: 0 | 1 | 2 | 3;
   levelFiveBestScore: number;
   levelFiveBestStars: 0 | 1 | 2 | 3;
+  levelSixBestScore: number;
+  levelSixBestStars: 0 | 1 | 2 | 3;
   tutorialCompleted: boolean;
   levelTwoUnlocked: boolean;
   levelThreeUnlocked: boolean;
   levelFourUnlocked: boolean;
   levelFiveUnlocked: boolean;
+  levelSixUnlocked: boolean;
 }
 
 export interface LevelOneResult {
@@ -47,11 +50,14 @@ const DEFAULT_PROGRESS: GameProgress = {
   levelFourBestStars: 0,
   levelFiveBestScore: 0,
   levelFiveBestStars: 0,
+  levelSixBestScore: 0,
+  levelSixBestStars: 0,
   tutorialCompleted: false,
   levelTwoUnlocked: false,
   levelThreeUnlocked: false,
   levelFourUnlocked: false,
   levelFiveUnlocked: false,
+  levelSixUnlocked: false,
 };
 
 export function loadProgress(storage: StoragePort): GameProgress {
@@ -86,6 +92,12 @@ export function loadProgress(storage: StoragePort): GameProgress {
       savedLevelFiveStars,
       starsForScore(levelFiveBestScore, LEVEL_FIVE),
     ) as 0 | 1 | 2 | 3;
+    const levelSixBestScore = Math.max(0, Number(saved.levelSixBestScore) || 0);
+    const savedLevelSixStars = Math.max(0, Math.min(3, Number(saved.levelSixBestStars) || 0));
+    const levelSixBestStars = Math.max(
+      savedLevelSixStars,
+      starsForScore(levelSixBestScore, LEVEL_SIX),
+    ) as 0 | 1 | 2 | 3;
     return {
       levelOneBestScore: bestScore,
       levelOneBestStars: bestStars,
@@ -97,11 +109,14 @@ export function loadProgress(storage: StoragePort): GameProgress {
       levelFourBestStars,
       levelFiveBestScore,
       levelFiveBestStars,
+      levelSixBestScore,
+      levelSixBestStars,
       tutorialCompleted: saved.tutorialCompleted === true,
       levelTwoUnlocked: bestStars >= 1,
       levelThreeUnlocked: levelTwoBestStars >= 1,
       levelFourUnlocked: levelThreeBestStars >= 1,
       levelFiveUnlocked: levelFourBestStars >= 1,
+      levelSixUnlocked: levelFiveBestStars >= 1,
     };
   } catch {
     return { ...DEFAULT_PROGRESS };
@@ -146,11 +161,18 @@ export function recordLevelResult(storage: StoragePort, levelId: LevelId, result
       levelFourBestStars: Math.max(current.levelFourBestStars, result.stars) as 0 | 1 | 2 | 3,
       levelFiveUnlocked: Math.max(current.levelFourBestStars, result.stars) >= 1,
     };
-  } else {
+  } else if (levelId === 5) {
     next = {
       ...current,
       levelFiveBestScore: Math.max(current.levelFiveBestScore, result.score),
       levelFiveBestStars: Math.max(current.levelFiveBestStars, result.stars) as 0 | 1 | 2 | 3,
+      levelSixUnlocked: Math.max(current.levelFiveBestStars, result.stars) >= 1,
+    };
+  } else {
+    next = {
+      ...current,
+      levelSixBestScore: Math.max(current.levelSixBestScore, result.score),
+      levelSixBestStars: Math.max(current.levelSixBestStars, result.stars) as 0 | 1 | 2 | 3,
     };
   }
   saveProgress(storage, next);
