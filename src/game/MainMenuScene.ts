@@ -1,10 +1,15 @@
 import Phaser from "phaser";
 import { loadBrowserProgress } from "./browserProgress";
+import { createBrowserSettingsStore } from "./browserSettings";
+import { showSettingsPanel } from "./SettingsPanel";
 
 const WIDTH = 390;
 const HEIGHT = 844;
 
 export class MainMenuScene extends Phaser.Scene {
+  private readonly settings = createBrowserSettingsStore();
+  private settingsPanel?: Phaser.GameObjects.Container;
+
   constructor() {
     super({ key: "MainMenu" });
   }
@@ -85,11 +90,28 @@ export class MainMenuScene extends Phaser.Scene {
     start.on("pointerdown", () => this.scene.start("LevelSelect"));
     this.tweens.add({ targets: start, scale: 1.035, duration: 850, yoyo: true, repeat: -1, ease: "Sine.InOut" });
 
+    const settings = this.add.text(WIDTH / 2, 674, "⚙ 设置", {
+      fontFamily: "inherit",
+      fontSize: "16px",
+      fontStyle: "bold",
+      color: "#fed7aa",
+      backgroundColor: "#3d2418",
+      padding: { left: 26, right: 26, top: 10, bottom: 10 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    settings.on("pointerdown", () => this.openSettings());
+
     this.add.text(WIDTH / 2, 614, "MVP · 六个完整关卡", {
       fontFamily: "inherit", fontSize: "12px", color: "#a88b7b",
     }).setOrigin(0.5);
     this.add.text(WIDTH / 2, 790, "建议开启声音并使用竖屏游玩", {
       fontFamily: "inherit", fontSize: "11px", color: "#80695d",
     }).setOrigin(0.5);
+  }
+
+  private openSettings(): void {
+    if (this.settingsPanel?.active) return;
+    this.settingsPanel = showSettingsPanel(this, this.settings, () => {
+      this.settingsPanel = undefined;
+    });
   }
 }

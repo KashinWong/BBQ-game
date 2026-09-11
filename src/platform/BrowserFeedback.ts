@@ -1,3 +1,5 @@
+import type { GameSettings } from "../game/settings.ts";
+
 export type FeedbackCue = "pickup" | "place" | "flip" | "perfect" | "success" | "warning" | "goal";
 
 const FREQUENCIES: Record<FeedbackCue, readonly number[]> = {
@@ -10,19 +12,48 @@ const FREQUENCIES: Record<FeedbackCue, readonly number[]> = {
   goal: [523, 659, 784, 1047],
 };
 
+export interface BrowserFeedbackEnvironment {
+  createAudioContext?: () => AudioContext | undefined;
+  vibrate?: (duration: number) => void;
+}
+
+const DEFAULT_SETTINGS: GameSettings = {
+  musicEnabled: true,
+  soundEnabled: true,
+  vibrationEnabled: true,
+};
+
+const BROWSER_ENVIRONMENT: BrowserFeedbackEnvironment = {
+  createAudioContext: () => {
+    const AudioContextConstructor = globalThis.AudioContext;
+    return AudioContextConstructor ? new AudioContextConstructor() : undefined;
+  },
+  vibrate: (duration) => {
+    globalThis.navigator?.vibrate?.(duration);
+  },
+};
+
 export class BrowserFeedback {
   private context?: AudioContext;
 
+  constructor(
+    private readonly getSettings: () => GameSettings = () => DEFAULT_SETTINGS,
+    private readonly environment: BrowserFeedbackEnvironment = BROWSER_ENVIRONMENT,
+  ) {}
+
   unlock(): void {
+    if (!this.getSettings().soundEnabled) return;
     try {
-      this.context ??= new AudioContext();
-      if (this.context.state === "suspended") void this.context.resume();
+      if (this.context?.state === "closed") this.context = undefined;
+      this.context ??= this.environment.createAudioContext?.();
+      if (this.context?.state === "suspended") void this.context.resume();
     } catch {
       this.context = undefined;
     }
   }
 
   play(cue: FeedbackCue): void {
+    if (!this.getSettings().soundEnabled) return;
     this.unlock();
     const context = this.context;
     if (!context || context.state === "closed") return;
@@ -43,8 +74,9 @@ export class BrowserFeedback {
   }
 
   vibrate(duration = 18): void {
+    if (!this.getSettings().vibrationEnabled) return;
     try {
-      navigator.vibrate?.(duration);
+      this.environment.vibrate?.(duration);
     } catch {
       // Vibration is optional and may be blocked by the browser.
     }

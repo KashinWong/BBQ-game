@@ -20,6 +20,9 @@ import { ingredientPositionAt } from "./ingredientMotion";
 import type { GameProgress } from "./progress";
 import { findMatchingOrderIndex, recipeMatches } from "./orderQueue";
 import { buildGrillSlots, type GrillSlotPosition } from "./grillLayout";
+import { discardActionForSkewer } from "./trashActions";
+import { createBrowserSettingsStore } from "./browserSettings";
+import { showSettingsPanel } from "./SettingsPanel";
 
 type SkewerLocation = "prep" | "dragging" | "tray" | "grill";
 
@@ -178,7 +181,8 @@ const LAYOUT: LayoutSpec = {
 
 export class GameplayScene extends Phaser.Scene {
   private readonly layout = LAYOUT;
-  private readonly feedback = new BrowserFeedback();
+  private readonly settings = createBrowserSettingsStore();
+  private readonly feedback = new BrowserFeedback(() => this.settings.get());
   private level: LevelOneConfig = LEVEL_ONE;
   private levelId: LevelId = 1;
   private grillPositions: GrillSlotPosition[] = buildGrillSlots(2);
@@ -209,6 +213,7 @@ export class GameplayScene extends Phaser.Scene {
   private tutorialActive = true;
   private tutorialStep: TutorialStep = "select-food";
   private storage?: Storage;
+  private settingsPanel?: Phaser.GameObjects.Container;
 
   private orders: OrderState[] = [];
   private orderViews: OrderView[] = [];
@@ -661,25 +666,26 @@ export class GameplayScene extends Phaser.Scene {
 
   private showPauseDialog(): void {
     if (!this.started || this.ended || this.manualPaused) return;
+    this.cancelActivePointer();
     this.manualPaused = true;
     const layer = this.add.container(0, 0).setDepth(700);
     const veil = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, WORLD_WIDTH, WORLD_HEIGHT, 0x0c0705, 0.84);
-    const card = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 320, 390, 0x3d2418, 1)
+    const card = this.add.rectangle(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, 320, 440, 0x3d2418, 1)
       .setStrokeStyle(2, 0xf6b84a, 0.9);
-    const title = this.add.text(WORLD_WIDTH / 2, 285, "暂停营业", {
+    const title = this.add.text(WORLD_WIDTH / 2, 270, "暂停营业", {
       fontFamily: "inherit",
       fontSize: "28px",
       fontStyle: "bold",
       color: "#fff7ed",
     }).setOrigin(0.5);
-    const help = this.add.text(WORLD_WIDTH / 2, 376, "点击食材自动上签\n拖到烤位 · 点击翻面\n两面金黄后拖到订单出餐", {
+    const help = this.add.text(WORLD_WIDTH / 2, 354, "点击食材自动上签\n拖到烤位 · 点击翻面\n两面金黄后拖到订单出餐", {
       fontFamily: "inherit",
       fontSize: "15px",
       color: "#e7c9ad",
       align: "center",
       lineSpacing: 10,
     }).setOrigin(0.5);
-    const resume = this.add.text(WORLD_WIDTH / 2, 475, "继续游戏", {
+    const resume = this.add.text(WORLD_WIDTH / 2, 454, "继续游戏", {
       fontFamily: "inherit",
       fontSize: "18px",
       fontStyle: "bold",
@@ -687,7 +693,13 @@ export class GameplayScene extends Phaser.Scene {
       backgroundColor: "#f6b84a",
       padding: { left: 44, right: 44, top: 11, bottom: 11 },
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-    const restart = this.add.text(WORLD_WIDTH / 2, 538, "重新开始", {
+    const settings = this.add.text(WORLD_WIDTH / 2, 510, "⚙ 设置", {
+      fontFamily: "inherit",
+      fontSize: "15px",
+      color: "#fed7aa",
+      padding: { left: 30, right: 30, top: 8, bottom: 8 },
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    const restart = this.add.text(WORLD_WIDTH / 2, 566, "重新开始", {
       fontFamily: "inherit",
       fontSize: "15px",
       color: "#fed7aa",
@@ -697,7 +709,8 @@ export class GameplayScene extends Phaser.Scene {
       layer.destroy(true);
       this.manualPaused = false;
     });
-    const select = this.add.text(WORLD_WIDTH / 2, 580, "返回选关", {
+    settings.on("pointerdown", () => this.openSettings());
+    const select = this.add.text(WORLD_WIDTH / 2, 610, "返回选关", {
       fontFamily: "inherit",
       fontSize: "14px",
       color: "#d6d3d1",
@@ -705,7 +718,14 @@ export class GameplayScene extends Phaser.Scene {
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     restart.on("pointerdown", () => this.scene.restart({ levelId: this.levelId }));
     select.on("pointerdown", () => this.scene.start("LevelSelect"));
-    layer.add([veil, card, title, help, resume, restart, select]);
+    layer.add([veil, card, title, help, resume, settings, restart, select]);
+  }
+
+  private openSettings(): void {
+    if (this.settingsPanel?.active) return;
+    this.settingsPanel = showSettingsPanel(this, this.settings, () => {
+      this.settingsPanel = undefined;
+    });
   }
 
   private createOrders(): void {
@@ -867,7 +887,7 @@ export class GameplayScene extends Phaser.Scene {
 
   private pickIngredient(ingredient: MovingIngredient): void {
     const skewer = this.prepSkewer;
-    if (this.ended || !this.started || this.manualPaused || !skewer || skewer.location !== "prep") return;
+    if (this.ended || !this.started || this.manualPaused || this.clockPaused || !skewer || skewer.location !== "prep") return;
     if (this.activePointer?.skewer === skewer) return;
 
     const reservedSlot = skewer.pieces.length + this.pendingIngredientPickups;
@@ -1048,7 +1068,7 @@ export class GameplayScene extends Phaser.Scene {
   }
 
   private beginPointer(skewer: SkewerState, pointer: Phaser.Input.Pointer): void {
-    if (this.ended || !this.started || this.manualPaused || this.activePointer) return;
+    if (this.ended || !this.started || this.manualPaused || this.clockPaused || this.activePointer) return;
     if (skewer === this.prepSkewer && this.pendingIngredientPickups > 0) {
       this.showToast("食材正在自动上签", 0xfef3c7);
       return;
@@ -1072,7 +1092,7 @@ export class GameplayScene extends Phaser.Scene {
 
   private movePointer(pointer: Phaser.Input.Pointer): void {
     const active = this.activePointer;
-    if (!active || this.ended) return;
+    if (!active || this.ended || this.manualPaused || this.clockPaused) return;
     const distance = Phaser.Math.Distance.Between(active.startX, active.startY, pointer.x, pointer.y);
     if (!active.dragging && distance > SKEWER_INTERACTION.dragThreshold) {
       active.dragging = true;
@@ -1086,12 +1106,17 @@ export class GameplayScene extends Phaser.Scene {
       active.trashHoverStarted ??= this.time.now;
     } else {
       active.trashHoverStarted = null;
+      active.trashCleared = false;
     }
   }
 
   private endPointer(): void {
     const active = this.activePointer;
     if (!active) return;
+    if (this.manualPaused || this.clockPaused) {
+      this.cancelActivePointer();
+      return;
+    }
     this.activePointer = null;
     const dropX = active.skewer.view.x;
     const dropY = active.skewer.view.y;
@@ -1108,8 +1133,12 @@ export class GameplayScene extends Phaser.Scene {
     }
 
     if (this.contains(this.layout.trash, dropX, dropY)) {
-      this.removeLastPiece(active.skewer);
-      this.restoreDraggedSkewer(active);
+      if (discardActionForSkewer(active.source, false) === "remove-last-piece") {
+        this.removeLastPiece(active.skewer);
+        this.restoreDraggedSkewer(active);
+      } else {
+        this.finishDiscard(active.skewer, active.source);
+      }
       return;
     }
 
@@ -1168,6 +1197,14 @@ export class GameplayScene extends Phaser.Scene {
     this.refreshSkewerVisual(skewer);
   }
 
+  private cancelActivePointer(): void {
+    const active = this.activePointer;
+    if (!active) return;
+    this.activePointer = null;
+    if (active.dragging) this.restoreDraggedSkewer(active);
+    else active.skewer.view.setDepth(80);
+  }
+
   private removeLastPiece(skewer: SkewerState): void {
     const removed = skewer.pieces.pop();
     if (!removed) return;
@@ -1177,12 +1214,10 @@ export class GameplayScene extends Phaser.Scene {
 
   private updateTrashHold(): void {
     const active = this.activePointer;
-    if (!active?.dragging || active.trashHoverStarted === null || active.trashCleared) return;
+    if (!active?.dragging || active.source !== "prep" || active.trashHoverStarted === null || active.trashCleared) return;
     if (this.time.now - active.trashHoverStarted < 600) return;
     active.trashCleared = true;
-    active.skewer.pieces = [];
-    this.buildSkewerVisual(active.skewer);
-    this.showToast("整串已清空", 0xfca5a5);
+    this.showToast("松手清空整串", 0xfca5a5);
   }
 
   private finishDiscard(skewer: SkewerState, source: SkewerLocation): void {
